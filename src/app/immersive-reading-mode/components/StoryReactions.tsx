@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -24,6 +25,9 @@ interface StoryReactionsProps {
 export default function StoryReactions({ relatoId, theme = 'dark' }: StoryReactionsProps) {
   const { user } = useAuth();
   const supabase = createClient();
+  const pathname = usePathname();
+  const router = useRouter();
+  const loginHref = `/sign-up-login-screen?redirect=${encodeURIComponent(pathname)}`;
 
   const [counts, setCounts] = useState<ReactionCounts>({});
   const [userReactions, setUserReactions] = useState<Set<string>>(new Set());
@@ -79,7 +83,10 @@ export default function StoryReactions({ relatoId, theme = 'dark' }: StoryReacti
   }, [relatoId, fetchReactions, supabase]);
 
   const handleToggle = async (tipo: string) => {
-    if (!user) return;
+    if (!user) {
+      router.push(loginHref);
+      return;
+    }
     setToggling(tipo);
     const isActive = userReactions.has(tipo);
 
@@ -139,12 +146,12 @@ export default function StoryReactions({ relatoId, theme = 'dark' }: StoryReacti
             <button
               key={r.tipo}
               onClick={() => handleToggle(r.tipo)}
-              disabled={!user || toggling === r.tipo}
+              disabled={toggling === r.tipo}
               title={!user ? 'Inicia sesión para reaccionar' : undefined}
               className={`flex items-center gap-2 px-4 py-2 rounded-full border text-sm font-medium transition-all duration-200 ${
                 isActive
                   ? 'bg-[#C9A96E]/20 border-[#C9A96E]/60 text-[#C9A96E] scale-105'
-                  : `${borderColor} ${textMuted} hover:border-[#C9A96E]/40 hover:text-[#C9A96E] hover:bg-[#C9A96E]/5 ${!user ? 'opacity-60 cursor-not-allowed' : ''}`
+                  : `${borderColor} ${textMuted} hover:border-[#C9A96E]/40 hover:text-[#C9A96E] hover:bg-[#C9A96E]/5`
               }`}
             >
               <span className="text-base leading-none">{r.emoji}</span>
@@ -160,7 +167,7 @@ export default function StoryReactions({ relatoId, theme = 'dark' }: StoryReacti
       </div>
       {!user && (
         <p className={`text-xs text-center mt-3 ${textMuted}`}>
-          <a href="/sign-up-login-screen" className="text-[#C9A96E] hover:underline">Inicia sesión</a> para dejar tu reacción
+          <a href={loginHref} className="text-[#C9A96E] hover:underline">Inicia sesión</a> para dejar tu reacción
         </p>
       )}
     </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Send, Trash2, MessageCircle } from 'lucide-react';
@@ -45,6 +46,8 @@ export default function StoryComments({ relatoId, theme = 'dark' }: StoryComment
   const { user } = useAuth();
   const supabase = createClient();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const pathname = usePathname();
+  const loginHref = `/sign-up-login-screen?redirect=${encodeURIComponent(pathname)}`;
 
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,7 +178,7 @@ export default function StoryComments({ relatoId, theme = 'dark' }: StoryComment
       ) : (
         <div className={`mb-8 p-4 rounded-xl border ${borderColor} text-center`}>
           <p className={`text-sm ${textMuted}`}>
-            <a href="/sign-up-login-screen" className="text-[#C9A96E] hover:underline font-medium">
+            <a href={loginHref} className="text-[#C9A96E] hover:underline font-medium">
               Inicia sesión
             </a>{' '}
             para dejar un comentario

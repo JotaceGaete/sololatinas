@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import AppLogo from '@/components/ui/AppLogo';
 import { useForm } from 'react-hook-form';
@@ -36,6 +37,10 @@ const demoCredentials = [
 
 
 export default function AuthClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/';
+
   const [tab, setTab] = useState<AuthTab>('login');
   const [ageGate, setAgeGate] = useState<AgeGateState>('pending');
   const [showPassword, setShowPassword] = useState(false);
@@ -80,6 +85,7 @@ export default function AuthClient() {
     await new Promise((r) => setTimeout(r, 1400));
     setIsLoading(false);
     toast.success('¡Bienvenida de vuelta! 🌹');
+    router.replace(redirectTo);
   };
 
   const onRegisterSubmit = async (data: RegisterForm) => {
@@ -92,6 +98,7 @@ export default function AuthClient() {
     await new Promise((r) => setTimeout(r, 1600));
     setIsLoading(false);
     toast.success('¡Cuenta creada! Revisa tu email para confirmar. 💛');
+    router.replace(redirectTo);
   };
 
   // Age Gate Screen
