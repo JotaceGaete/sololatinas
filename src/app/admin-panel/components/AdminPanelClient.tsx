@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import AppLogo from '@/components/ui/AppLogo';
 import { ViewsAreaChart, CountryBarChart } from './AdminStatsChart';
 import { mockStories, mockAuthors } from '@/lib/mockData';
@@ -35,6 +36,7 @@ const statusLabels: Record<string, string> = {
 };
 
 export default function AdminPanelClient() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -88,6 +90,12 @@ export default function AdminPanelClient() {
 
   const handleFeature = (storyId: string) => {
     handleStatusChange(storyId, 'destacado');
+  };
+
+  const handleLogout = async () => {
+    await fetch('/api/admin/logout', { method: 'POST' });
+    router.push('/admin-login');
+    router.refresh();
   };
 
   const handleDelete = (storyId: string) => {
@@ -175,6 +183,7 @@ export default function AdminPanelClient() {
           {(sidebarOpen || mobile) && <span>Ver sitio</span>}
         </Link>
         <button
+          onClick={handleLogout}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-all ${
             !sidebarOpen && !mobile ? 'justify-center' : ''
           }`}
