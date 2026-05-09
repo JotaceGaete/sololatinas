@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
@@ -75,6 +75,24 @@ export default function EscribirRelatoClient() {
   const [publishing, setPublishing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [wordCount, setWordCount] = useState(0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [r2Ready, setR2Ready] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    fetch('/api/upload')
+      .then((r) => r.json())
+      .then((json) => {
+        setR2Ready(json.ok);
+        if (!json.ok) {
+          const missing = Object.entries(json.vars as Record<string, boolean>)
+            .filter(([, v]) => !v)
+            .map(([k]) => k)
+            .join(', ');
+          console.warn('RELATO_UPLOAD_R2_NOT_CONFIGURED', { missing, vars: json.vars });
+        }
+      })
+      .catch(() => setR2Ready(false));
+  }, []);
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
@@ -141,24 +159,39 @@ export default function EscribirRelatoClient() {
 
   const uploadCoverImage = async (): Promise<string> => {
     if (!coverImage) return '';
+    setUploadError(null);
     const fd = new FormData();
     fd.append('file', coverImage);
     let res: Response;
     try {
       res = await fetch('/api/upload', { method: 'POST', body: fd });
     } catch (err: any) {
+      const msg = 'No se pudo conectar con el servidor de imágenes';
       console.log('RELATO_UPLOAD_IMAGE', { fileName: coverImage.name, publicUrl: null, error: err?.message });
-      toast.error('No se pudo conectar con el servidor de imágenes');
+      setUploadError(msg);
+      toast.error(msg);
       return '';
     }
-    const json = await res.json();
+    let json: Record<string, unknown>;
+    try {
+      json = await res.json();
+    } catch {
+      const msg = `Error del servidor (status ${res.status})`;
+      console.log('RELATO_UPLOAD_IMAGE', { fileName: coverImage.name, publicUrl: null, error: msg });
+      setUploadError(msg);
+      toast.error('Error al subir imagen: ' + msg);
+      return '';
+    }
     if (!res.ok || !json.url) {
-      console.log('RELATO_UPLOAD_IMAGE', { fileName: coverImage.name, publicUrl: null, error: json.error ?? 'unknown' });
-      toast.error('Error al subir imagen: ' + (json.error ?? 'Error desconocido'));
+      const msg = (json.error as string) ?? `Error ${res.status}`;
+      console.log('RELATO_UPLOAD_IMAGE', { fileName: coverImage.name, publicUrl: null, error: msg });
+      setUploadError(msg);
+      toast.error('Error al subir imagen: ' + msg);
       return '';
     }
-    console.log('RELATO_UPLOAD_IMAGE', { fileName: coverImage.name, publicUrl: json.url, error: null });
-    return json.url as string;
+    const publicUrl = json.url as string;
+    console.log('RELATO_UPLOAD_IMAGE', { fileName: coverImage.name, publicUrl, error: null });
+    return publicUrl;
   };
 
   const calcReadingTime = (html: string): number => {
@@ -260,6 +293,32 @@ export default function EscribirRelatoClient() {
           Comparte tu historia con nuestra comunidad de lectores latinos. Cada relato es una ventana al alma.
         </p>
       </div>
+
+      {/* ── R2 config warning ── */}
+      {r2Ready === false && (
+        <div className="mb-6 flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-300">
+          <span className="mt-0.5 text-base">⚠️</span>
+          <div>
+            <p className="font-semibold">Subida de imágenes no disponible</p>
+            <p className="text-amber-300/70 mt-0.5">
+              Las variables R2 no están configuradas en el servidor. Las imágenes no se guardarán.
+              Verifica R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET y R2_PUBLIC_URL en .env.local.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ── Upload error banner ── */}
+      {uploadError && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          <span className="mt-0.5 text-base">✕</span>
+          <div className="flex-1">
+            <p className="font-semibold">Error al subir imagen</p>
+            <p className="text-red-300/70 mt-0.5 font-mono text-xs">{uploadError}</p>
+          </div>
+          <button onClick={() => setUploadError(null)} className="text-red-300/60 hover:text-red-300 transition-colors text-lg leading-none">×</button>
+        </div>
+      )}
 
       <div className="space-y-8">
         {/* ── Título ── */}
