@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import AuthClient from './components/AuthClient';
 
 export default function SignUpLoginPage() {
-  return <AuthClient />;
+  return (
+    <Suspense fallback={null}>
+      <AuthClient />
+    </Suspense>
+  );
 }

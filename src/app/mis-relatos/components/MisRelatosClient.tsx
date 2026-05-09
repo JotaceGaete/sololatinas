@@ -5,8 +5,9 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { PenLine, BookOpen, Eye, Heart, Clock, Globe, Archive, MoreVertical, Edit3, Trash2, Send, FileText, Plus, ChevronDown, Search, MessageCircle } from 'lucide-react';
+import { PenLine, BookOpen, Eye, Heart, Clock, Globe, Archive, MoreVertical, Edit3, Trash2, Send, FileText, Plus, ChevronDown, Search, MessageCircle, Loader2 } from 'lucide-react';
 import Icon from '@/components/ui/AppIcon';
+import { useRequireAuth } from '@/hooks/useRequireAuth';
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -307,7 +308,7 @@ function StatCard({ icon: Icon, label, value, color }: {icon: any;label: string;
 
 export default function MisRelatosClient() {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useRequireAuth();
   const supabase = createClient();
 
   const [relatos, setRelatos] = useState<Relato[]>([]);
@@ -320,41 +321,36 @@ export default function MisRelatosClient() {
   // ── Fetch stories ──────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !user) return;
     fetchRelatos();
   }, [user, authLoading]);
 
   async function fetchRelatos() {
+    if (!user) return;
     setLoading(true);
     try {
-      if (user) {
-        const { data, error } = await supabase
-          .from('relatos')
-          .select('id, titulo, extracto, tags, pais, categoria, imagen_url, vistas, likes, estado, created_at, updated_at')
-          .eq('autor_id', user.id)
-          .order('updated_at', { ascending: false });
+      const { data, error } = await supabase
+        .from('relatos')
+        .select('id, titulo, extracto, tags, pais, categoria, imagen_url, vistas, likes, estado, created_at, updated_at')
+        .eq('autor_id', user.id)
+        .order('updated_at', { ascending: false });
 
-        if (error) throw error;
-        const relatosData = (data as Relato[]) ?? [];
+      if (error) throw error;
+      const relatosData = (data as Relato[]) ?? [];
 
-        // Fetch comment and reaction counts for each relato
-        const enriched = await Promise.all(
-          relatosData.map(async (r) => {
-            const [commentResult, reactionResult] = await Promise.all([
-              supabase.from('story_comments').select('id', { count: 'exact', head: true }).eq('relato_id', r.id),
-              supabase.from('story_reactions').select('id', { count: 'exact', head: true }).eq('relato_id', r.id),
-            ]);
-            return { ...r, comment_count: commentResult.count ?? 0, reaction_count: reactionResult.count ?? 0 };
-          })
-        );
+      const enriched = await Promise.all(
+        relatosData.map(async (r) => {
+          const [commentResult, reactionResult] = await Promise.all([
+            supabase.from('story_comments').select('id', { count: 'exact', head: true }).eq('relato_id', r.id),
+            supabase.from('story_reactions').select('id', { count: 'exact', head: true }).eq('relato_id', r.id),
+          ]);
+          return { ...r, comment_count: commentResult.count ?? 0, reaction_count: reactionResult.count ?? 0 };
+        })
+      );
 
-        setRelatos(enriched);
-      } else {
-        // Show mock data for unauthenticated visitors
-        setRelatos(MOCK_RELATOS);
-      }
+      setRelatos(enriched);
     } catch {
-      setRelatos(MOCK_RELATOS);
+      setRelatos([]);
     } finally {
       setLoading(false);
     }
@@ -431,6 +427,14 @@ export default function MisRelatosClient() {
 
 
   // ── Render ─────────────────────────────────────────────────────────────────
+
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-noir flex items-center justify-center">
+        <Loader2 size={32} className="animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-noir pt-20 pb-16">
@@ -582,17 +586,6 @@ export default function MisRelatosClient() {
           </div>
         }
 
-        {/* Footer note for guests */}
-        {!user && !authLoading &&
-        <div className="mt-8 p-4 rounded-xl border border-primary/20 bg-primary/5 text-center">
-            <p className="text-sm text-muted-foreground">
-              <Link href="/sign-up-login-screen" className="text-primary hover:underline font-medium">
-                Inicia sesión
-              </Link>{' '}
-              para ver y gestionar tus propios relatos.
-            </p>
-          </div>
-        }
       </div>
     </div>);
 
