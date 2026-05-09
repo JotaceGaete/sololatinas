@@ -7,6 +7,7 @@ import AppImage from '@/components/ui/AppImage';
 import StoryCard from '@/components/ui/StoryCard';
 import { createClient } from '@/lib/supabase/client';
 import type { Story } from '@/lib/mockData';
+import { getRelatoImageUrl, htmlToPlainText, sanitizeStoryHtml } from '@/lib/relato-display';
 import { X, ChevronLeft, BookmarkPlus, Share2, Heart, Sun, Moon, Coffee, Type, Minus, Plus, Eye, BookOpen, AlignJustify, ArrowLeft, ArrowRight, Library, Sparkles, CheckCircle } from 'lucide-react';
 import StoryReactions from './StoryReactions';
 import StoryComments from './StoryComments';
@@ -51,41 +52,36 @@ const fontFamilies: Record<FontFamily, { label: string; class: string }> = {
   sans: { label: 'Moderna', class: 'font-sans' },
 };
 
-function isHtmlContent(text: string): boolean {
-  return /<[a-z][\s\S]*>/i.test(text);
-}
+function getHtmlBlocks(html: string): string[] {
+  const blockMatches = html.match(/<(p|h2|h3|blockquote|ul|ol)[\s\S]*?<\/\1>/gi);
+  if (blockMatches?.length) return blockMatches;
 
-function sanitizeHtml(html: string): string {
   return html
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
-    .replace(/javascript\s*:/gi, '');
+    .split(/\n\n+/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map((paragraph) => `<p>${paragraph}</p>`);
 }
 
-function splitIntoPages(text: string, targetWords = TARGET_WORDS_PER_PAGE): string[] {
-  const isHtml = isHtmlContent(text);
-  const paragraphs = isHtml
-    ? text.split(/(?<=<\/(?:p|h[1-6]|blockquote|li)>)\s*/i).filter((p) => p.trim().length > 0)
-    : text.split(/\n\n+/).filter((p) => p.trim().length > 0);
-
+function splitHtmlIntoPages(html: string, targetWords = TARGET_WORDS_PER_PAGE): string[] {
+  const blocks = getHtmlBlocks(html);
   const pages: string[] = [];
   let currentPage: string[] = [];
   let currentWordCount = 0;
 
-  for (const paragraph of paragraphs) {
-    const plainText = isHtml ? paragraph.replace(/<[^>]+>/g, '') : paragraph;
-    const wordCount = plainText.trim().split(/\s+/).length;
+  for (const block of blocks) {
+    const wordCount = htmlToPlainText(block).split(/\s+/).filter(Boolean).length;
 
     if (currentWordCount > 0 && currentWordCount + wordCount > WORDS_PER_PAGE_MAX) {
-      pages.push(currentPage.join(isHtml ? '' : '\n\n'));
-      currentPage = [paragraph];
+      pages.push(currentPage.join(''));
+      currentPage = [block];
       currentWordCount = wordCount;
     } else {
-      currentPage.push(paragraph);
+      currentPage.push(block);
       currentWordCount += wordCount;
 
       if (currentWordCount >= WORDS_PER_PAGE_MIN && currentWordCount >= targetWords) {
-        pages.push(currentPage.join(isHtml ? '' : '\n\n'));
+        pages.push(currentPage.join(''));
         currentPage = [];
         currentWordCount = 0;
       }
@@ -93,10 +89,10 @@ function splitIntoPages(text: string, targetWords = TARGET_WORDS_PER_PAGE): stri
   }
 
   if (currentPage.length > 0) {
-    pages.push(currentPage.join(isHtml ? '' : '\n\n'));
+    pages.push(currentPage.join(''));
   }
 
-  return pages.length > 0 ? pages : [text];
+  return pages.length > 0 ? pages : [html];
 }
 
 function showToast(message: string) {
@@ -126,6 +122,8 @@ interface RelatoRow {
   pais: string | null;
   categoria: string | null;
   imagen_url: string | null;
+  portada_url?: string | null;
+  cover_image_url?: string | null;
   vistas: number | null;
   likes: number | null;
   estado: string;
@@ -135,6 +133,7 @@ interface RelatoRow {
 }
 
 function mapToStory(r: RelatoRow): Story {
+  const imageUrl = getRelatoImageUrl(r);
   return {
     id: r.id,
     title: r.titulo ?? '',
@@ -143,7 +142,7 @@ function mapToStory(r: RelatoRow): Story {
     country: r.pais ?? '',
     excerpt: r.extracto ?? '',
     fullText: r.cuerpo ?? r.extracto ?? '',
-    coverImage: r.imagen_url ?? '',
+    coverImage: imageUrl,
     tags: r.tags ?? [],
     readingTime: r.tiempo_lectura ?? 5,
     views: r.vistas ?? 0,
@@ -203,6 +202,13 @@ export default function ImmersiveReaderClient() {
 
       const { data, error } = await query.single();
       console.log('RELATO_DETAIL_QUERY', { id: storyId, data, error });
+      if (data) {
+        console.log('RELATO_IMAGE', {
+          portada_url: (data as RelatoRow).portada_url,
+          cover_image_url: (data as RelatoRow).cover_image_url,
+          imagen_url: (data as RelatoRow).imagen_url,
+        });
+      }
 
       if (error || !data) {
         console.log('RELATO_DETAIL_QUERY: not found', { id: storyId, error });
@@ -233,7 +239,8 @@ export default function ImmersiveReaderClient() {
   }, [storyId, isPreview]);
 
   const fullText = story ? (story.fullText || story.excerpt) : '';
-  const pages = story ? splitIntoPages(fullText) : [''];
+  const sanitizedHtml = sanitizeStoryHtml(fullText);
+  const pages = story ? splitHtmlIntoPages(sanitizedHtml) : [''];
   const totalPages = pages.length;
 
   const tc = themeConfig[theme];
@@ -361,6 +368,16 @@ export default function ImmersiveReaderClient() {
           to { opacity: 1; transform: scale(1); }
         }
         .end-screen-animate { animation: endScreenIn 0.5s ease; }
+        .story-prose :where(p) { margin: 0 0 1.75rem; text-align: justify; }
+        .story-prose :where(blockquote) {
+          border-left: 2px solid #C9A96E;
+          margin: 2rem 0;
+          padding-left: 1.25rem;
+          color: inherit;
+          opacity: 0.9;
+        }
+        .story-prose :where(ul, ol) { margin: 0 0 1.75rem 1.25rem; }
+        .story-prose :where(li) { margin: 0.35rem 0; }
       `}</style>
 
       {/* ── FIXED TOP BAR ── */}
@@ -573,7 +590,12 @@ export default function ImmersiveReaderClient() {
                     className="object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-gradient-to-br from-[#2C1F0E] to-[#0D0B0A]" />
+                  <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_35%_20%,rgba(201,169,110,0.28),transparent_34%),linear-gradient(135deg,#2C1F0E,#0D0B0A)]">
+                    <div className="text-center">
+                      <BookOpen className="mx-auto mb-3 text-[#C9A96E]/70" size={34} />
+                      <p className="font-display text-lg italic text-[#F5EFE6]/80">SoloLatinas</p>
+                    </div>
+                  </div>
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
               </div>
@@ -631,26 +653,10 @@ export default function ImmersiveReaderClient() {
                 )}
 
                 <div
-                  className={`leading-[1.95] ${tc.text} ${ff.class} prose-story`}
+                  className={`story-prose prose max-w-none leading-[1.95] ${theme === 'cream' ? 'prose-stone' : 'prose-invert'} ${tc.text} ${ff.class}`}
                   style={{ fontSize: `${fontSize}px` }}
-                >
-                  {(() => {
-                    const pageContent = pages[currentPage - 1] ?? '';
-                    if (isHtmlContent(pageContent)) {
-                      return (
-                        <div
-                          className="mb-7 text-justify story-html-content"
-                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(pageContent) }}
-                        />
-                      );
-                    }
-                    return pageContent.split('\n\n').map((para, i) => (
-                      <p key={`p-${currentPage}-${i}`} className="mb-7 text-justify">
-                        {para.trim()}
-                      </p>
-                    ));
-                  })()}
-                </div>
+                  dangerouslySetInnerHTML={{ __html: pages[currentPage - 1] ?? '' }}
+                />
 
                 {currentPage === totalPages && (
                   <div className="end-screen-animate mt-16 mb-8">
@@ -793,22 +799,10 @@ export default function ImmersiveReaderClient() {
             {readingMode === 'scroll' && (
               <div ref={contentRef}>
                 <div
-                  className={`leading-[1.95] ${tc.text} ${ff.class} prose-story`}
+                  className={`story-prose prose max-w-none leading-[1.95] ${theme === 'cream' ? 'prose-stone' : 'prose-invert'} ${tc.text} ${ff.class}`}
                   style={{ fontSize: `${fontSize}px` }}
-                >
-                  {isHtmlContent(fullText) ? (
-                    <div
-                      className="mb-7 text-justify story-html-content"
-                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(fullText) }}
-                    />
-                  ) : (
-                    fullText.split('\n\n').map((para, i) => (
-                      <p key={`scroll-p-${i}`} className="mb-7 text-justify">
-                        {para.trim()}
-                      </p>
-                    ))
-                  )}
-                </div>
+                  dangerouslySetInnerHTML={{ __html: sanitizedHtml }}
+                />
 
                 <div className="mt-16 mb-8">
                   <div className="h-px bg-gradient-to-r from-transparent via-[#C9A96E]/50 to-transparent mb-12" />

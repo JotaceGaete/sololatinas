@@ -2,6 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { X, Clock, Globe, BookOpen } from 'lucide-react';
+import { sanitizeStoryHtml } from '@/lib/relato-display';
 
 interface PreviewModalProps {
   titulo: string;
@@ -18,6 +19,10 @@ interface PreviewModalProps {
 export default function PreviewModal({
   titulo, cuerpo, extracto, tags, pais, categoria, coverPreview, readingTime, onClose
 }: PreviewModalProps) {
+  const safeBodyHtml = cuerpo
+    ? sanitizeStoryHtml(cuerpo)
+    : '<p class="text-muted-foreground italic">El cuerpo del relato aparecera aqui...</p>';
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handleKey);
@@ -107,7 +112,7 @@ export default function PreviewModal({
           {/* Body */}
           <div
             className="prose-preview font-serif text-lg text-foreground leading-relaxed"
-            dangerouslySetInnerHTML={{ __html: cuerpo || '<p class="text-muted-foreground italic">El cuerpo del relato aparecerá aquí...</p>' }}
+            dangerouslySetInnerHTML={{ __html: safeBodyHtml }}
           />
         </div>
 

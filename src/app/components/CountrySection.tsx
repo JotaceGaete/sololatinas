@@ -5,6 +5,7 @@ import Link from 'next/link';
 import StoryCard from '@/components/ui/StoryCard';
 import type { Story } from '@/lib/mockData';
 import { createClient } from '@/lib/supabase/client';
+import { getRelatoImageUrl } from '@/lib/relato-display';
 import { MapPin } from 'lucide-react';
 
 const countries = ['Todos', 'Colombia', 'México', 'Argentina', 'España', 'Venezuela', 'Chile'];
@@ -27,6 +28,8 @@ interface RelatoRow {
   pais: string | null;
   categoria: string | null;
   imagen_url: string | null;
+  portada_url?: string | null;
+  cover_image_url?: string | null;
   vistas: number | null;
   likes: number | null;
   estado: string;
@@ -36,6 +39,7 @@ interface RelatoRow {
 }
 
 function mapToStory(r: RelatoRow): Story {
+  const imageUrl = getRelatoImageUrl(r);
   return {
     id: r.id,
     title: r.titulo ?? '',
@@ -44,7 +48,7 @@ function mapToStory(r: RelatoRow): Story {
     country: r.pais ?? '',
     excerpt: r.extracto ?? '',
     fullText: r.cuerpo ?? r.extracto ?? '',
-    coverImage: r.imagen_url ?? '',
+    coverImage: imageUrl,
     tags: r.tags ?? [],
     readingTime: r.tiempo_lectura ?? 5,
     views: r.vistas ?? 0,
@@ -64,7 +68,7 @@ export default function CountrySection() {
     const supabase = createClient();
     supabase
       .from('relatos')
-      .select('id, titulo, extracto, cuerpo, tags, pais, categoria, imagen_url, vistas, likes, estado, tiempo_lectura, created_at, autor_id')
+      .select('*')
       .in('estado', ['publicado', 'published'])
       .order('created_at', { ascending: false })
       .limit(60)

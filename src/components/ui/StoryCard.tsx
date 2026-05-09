@@ -20,18 +20,34 @@ const countryFlags: Record<string, string> = {
   Uruguay: '🇺🇾',
 };
 
+function StoryImage({ story, className }: { story: Story; className: string }) {
+  const imageUrl = story.coverImage?.trim();
+
+  if (!imageUrl) {
+    return (
+      <div className="flex h-full w-full items-center justify-center bg-[radial-gradient(circle_at_35%_20%,rgba(201,169,110,0.26),transparent_34%),linear-gradient(135deg,#2C1F0E,#0D0B0A)]">
+        <span className="font-display text-lg italic text-primary/80">SL</span>
+      </div>
+    );
+  }
+
+  return (
+    <AppImage
+      src={imageUrl}
+      alt={`Portada del relato ${story.title} por ${story.author}`}
+      fill
+      className={className}
+    />
+  );
+}
+
 export default function StoryCard({ story, variant = 'default' }: StoryCardProps) {
   if (variant === 'compact') {
     return (
       <Link href={`/immersive-reading-mode?id=${story.id}`} className="block">
         <div className="story-card flex gap-3 p-3 group cursor-pointer">
           <div className="relative w-16 h-20 flex-shrink-0 overflow-hidden rounded-md">
-            <AppImage
-              src={story.coverImage}
-              alt={`Portada del relato ${story.title} por ${story.author}`}
-              fill
-              className="object-cover transition-transform duration-500 group-hover:scale-105"
-            />
+            <StoryImage story={story} className="object-cover transition-transform duration-500 group-hover:scale-105" />
           </div>
           <div className="flex-1 min-w-0">
             <h4 className="font-display text-sm font-semibold text-foreground line-clamp-2 group-hover:text-primary transition-colors">
@@ -54,12 +70,7 @@ export default function StoryCard({ story, variant = 'default' }: StoryCardProps
     return (
       <Link href={`/immersive-reading-mode?id=${story.id}`} className="block">
         <div className="story-card group cursor-pointer relative overflow-hidden h-96">
-          <AppImage
-            src={story.coverImage}
-            alt={`Imagen artística del relato ${story.title} - ${story.excerpt.slice(0, 60)}`}
-            fill
-            className="object-cover transition-transform duration-700 group-hover:scale-105"
-          />
+          <StoryImage story={story} className="object-cover transition-transform duration-700 group-hover:scale-105" />
           <div className="absolute inset-0 overlay-dark-full" />
           <div className="absolute inset-0 p-6 flex flex-col justify-end">
             <div className="flex flex-wrap gap-1 mb-3">
@@ -103,12 +114,7 @@ export default function StoryCard({ story, variant = 'default' }: StoryCardProps
     <Link href={`/immersive-reading-mode?id=${story.id}`} className="block">
       <div className="story-card group cursor-pointer">
         <div className="relative h-52 overflow-hidden">
-          <AppImage
-            src={story.coverImage}
-            alt={`Portada artística: ${story.title} por ${story.author}, historia romántica ${story.country}`}
-            fill
-            className="object-cover transition-transform duration-700 group-hover:scale-105"
-          />
+          <StoryImage story={story} className="object-cover transition-transform duration-700 group-hover:scale-105" />
           <div className="absolute inset-0 overlay-dark" />
           <div className="absolute top-3 left-3 flex items-center gap-1.5">
             <span className="text-base">{countryFlags[story.country] || '🌎'}</span>
