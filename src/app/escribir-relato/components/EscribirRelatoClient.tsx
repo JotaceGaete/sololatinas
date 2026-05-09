@@ -140,24 +140,25 @@ export default function EscribirRelatoClient() {
   // ─── Submit helpers ──────────────────────────────────────────────────────────
 
   const uploadCoverImage = async (): Promise<string> => {
-    if (!coverImage || !user) return '';
+    if (!coverImage) return '';
+    const fd = new FormData();
+    fd.append('file', coverImage);
+    let res: Response;
     try {
-      const ext = coverImage.name.split('.').pop();
-      const path = `covers/${user.id}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage
-        .from('relatos-imagenes')
-        .upload(path, coverImage, { upsert: true });
-      if (error) {
-        console.log('Storage upload error:', error.message);
-        return '';
-      }
-      const { data: { publicUrl } } = supabase.storage
-        .from('relatos-imagenes')
-        .getPublicUrl(path);
-      return publicUrl;
-    } catch {
+      res = await fetch('/api/upload', { method: 'POST', body: fd });
+    } catch (err: any) {
+      console.log('RELATO_UPLOAD_IMAGE', { fileName: coverImage.name, publicUrl: null, error: err?.message });
+      toast.error('No se pudo conectar con el servidor de imágenes');
       return '';
     }
+    const json = await res.json();
+    if (!res.ok || !json.url) {
+      console.log('RELATO_UPLOAD_IMAGE', { fileName: coverImage.name, publicUrl: null, error: json.error ?? 'unknown' });
+      toast.error('Error al subir imagen: ' + (json.error ?? 'Error desconocido'));
+      return '';
+    }
+    console.log('RELATO_UPLOAD_IMAGE', { fileName: coverImage.name, publicUrl: json.url, error: null });
+    return json.url as string;
   };
 
   const calcReadingTime = (html: string): number => {
@@ -180,6 +181,7 @@ export default function EscribirRelatoClient() {
     setSaving(true);
     try {
       const imagenUrl = await uploadCoverImage();
+      if (coverImage && !imagenUrl) return;
       const { error } = await supabase.from('relatos').insert({
         titulo: form.titulo.trim(),
         cuerpo: form.cuerpo,
@@ -189,7 +191,9 @@ export default function EscribirRelatoClient() {
         categoria: form.categoria,
         autor_id: user.id,
         estado: 'borrador',
-        imagen_url: imagenUrl,
+        imagen_url: imagenUrl || null,
+        portada_url: imagenUrl || null,
+        cover_image_url: imagenUrl || null,
         generar_imagen_ia: form.generarImagenIA,
         tiempo_lectura: calcReadingTime(form.cuerpo),
       });
@@ -210,6 +214,7 @@ export default function EscribirRelatoClient() {
     setPublishing(true);
     try {
       const imagenUrl = await uploadCoverImage();
+      if (coverImage && !imagenUrl) return;
       const { error } = await supabase.from('relatos').insert({
         titulo: form.titulo.trim(),
         cuerpo: form.cuerpo,
@@ -219,7 +224,9 @@ export default function EscribirRelatoClient() {
         categoria: form.categoria,
         autor_id: user.id,
         estado: 'revision',
-        imagen_url: imagenUrl,
+        imagen_url: imagenUrl || null,
+        portada_url: imagenUrl || null,
+        cover_image_url: imagenUrl || null,
         generar_imagen_ia: form.generarImagenIA,
         tiempo_lectura: calcReadingTime(form.cuerpo),
         published_at: new Date().toISOString(),
