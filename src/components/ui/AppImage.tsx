@@ -22,6 +22,28 @@ interface AppImageProps {
     [key: string]: any;
 }
 
+const GradientPlaceholder = memo(function GradientPlaceholder({
+    fill,
+    width,
+    height,
+    className = '',
+}: {
+    fill?: boolean;
+    width?: number;
+    height?: number;
+    className?: string;
+}) {
+    const base = `bg-gradient-to-br from-[#1A1210] via-[#130D0A] to-[#0D0B0A] ${className}`;
+    if (fill) {
+        return (
+            <div className="relative" style={{ width: '100%', height: '100%' }}>
+                <div className={`w-full h-full ${base}`} />
+            </div>
+        );
+    }
+    return <div className={base} style={{ width: width || 400, height: height || 300 }} />;
+});
+
 const AppImage = memo(function AppImage({
     src,
     alt,
@@ -66,6 +88,12 @@ const AppImage = memo(function AppImage({
         if (onClick) classes.push('cursor-pointer hover:opacity-90 transition-opacity duration-200');
         return classes.filter(Boolean).join(' ');
     }, [className, isLoading, onClick]);
+
+    // Guard: never pass empty src to <Image> — render a styled placeholder instead
+    const isValidSrc = typeof imageSrc === 'string' && imageSrc.trim() !== '';
+    if (!isValidSrc) {
+        return <GradientPlaceholder fill={fill} width={width} height={height} className={className} />;
+    }
 
     const imageProps = useMemo(() => {
         const baseProps: any = {
