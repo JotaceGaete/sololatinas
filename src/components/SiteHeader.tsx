@@ -11,8 +11,10 @@ import { toast } from 'sonner';
 const navLinks = [
   { label: 'Inicio', href: '/' },
   { label: 'Relatos', href: '/stories-library' },
+  { label: 'Historias', href: '/historias' },
   { label: 'Autores', href: '/authors-page' },
   { label: 'Mis Relatos', href: '/mis-relatos' },
+  { label: 'Mis Historias', href: '/mis-historias' },
   { label: 'Comunidad', href: '#comunidad' },
 ];
 
