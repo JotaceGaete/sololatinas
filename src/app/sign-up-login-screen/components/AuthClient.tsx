@@ -55,83 +55,96 @@ export default function AuthClient() {
   const loginForm = useForm<LoginForm>({ defaultValues: { email: '', password: '', remember: false } });
   const registerForm = useForm<RegisterForm>();
 
-  // ── Direct test — completely bypasses the form ────────────────────────────────
-  const handleDirectTest = async () => {
-    // Step 1: confirm click fires immediately
-    console.log('DIRECT_SIGNUP_TEST_CLICKED');
+  // ── [DEV] Test connection — no email sent, no rate limit consumed ─────────────
+  const handleTestConnection = async () => {
+    console.log('DEV_CONNECTION_TEST_CLICKED');
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'MISSING';
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
-    const keyInfo = anonKey ? `present (len=${anonKey.length})` : 'MISSING';
     const projectRef = supabaseUrl.replace('https://', '').split('.')[0];
-    const envDump = `URL=${supabaseUrl}\nREF=${projectRef}\nKEY=${keyInfo}`;
-    console.log('ENV_DUMP', { supabaseUrl, projectRef, keyInfo });
-    setDebugInfo(`CLICKED ✓\n${envDump}`);
+    setDebugInfo(
+      `[connection test]\nURL=${supabaseUrl}\nREF=${projectRef}\nKEY=${anonKey ? `present (len=${anonKey.length})` : 'MISSING'}`
+    );
 
-    // Step 2: try creating the client
     let supabase: ReturnType<typeof createClient>;
     try {
       supabase = createClient();
-      console.log('CLIENT_CREATED ✓');
       setDebugInfo((p) => `${p}\nCLIENT_CREATED ✓`);
     } catch (err: any) {
-      console.error('CLIENT_CREATE_ERROR', err);
       setDebugInfo((p) => `${p}\nCLIENT_ERROR: ${err?.message}`);
       return;
     }
 
-    // Step 3: call signUp directly
-    const testEmail = `sololatinas.test.${Date.now()}@gmail.com`;
-    console.log('CALLING_SIGNUP', { email: testEmail });
-    setDebugInfo((p) => `${p}\nCALLING_SIGNUP → ${testEmail}`);
-
-    let result: Awaited<ReturnType<typeof supabase.auth.signUp>>;
+    // getSession() — reads local storage only, zero network traffic
     try {
-      result = await supabase.auth.signUp({ email: testEmail, password: 'Password123!' });
+      const { data, error } = await supabase.auth.getSession();
+      console.log('GET_SESSION', { session: !!data.session, error: error?.message });
+      setDebugInfo((p) =>
+        `${p}\ngetSession ✓ → session=${data.session ? `active (user=${data.session.user.id})` : 'none'}`
+      );
     } catch (err: any) {
-      console.error('SIGNUP_THREW', err);
-      setDebugInfo((p) => `${p}\nSIGNUP_THREW: ${err?.message}`);
+      setDebugInfo((p) => `${p}\ngetSession ERROR: ${err?.message}`);
+    }
+
+    // Lightweight health check via /auth/v1/settings — no email, no rate limit
+    try {
+      const resp = await fetch(`${supabaseUrl}/auth/v1/settings`, {
+        headers: { apikey: anonKey },
+      });
+      const body = await resp.json().catch(() => ({}));
+      console.log('AUTH_SETTINGS', { status: resp.status, body });
+      setDebugInfo((p) =>
+        `${p}\n/auth/v1/settings → status=${resp.status} ✓\n  email_signup=${body.external?.email ?? body.disable_signup === false ? 'enabled' : JSON.stringify(body.external?.email)}`
+      );
+    } catch (err: any) {
+      setDebugInfo((p) => `${p}\n/auth/v1/settings ERROR: ${err?.message}`);
+    }
+  };
+
+  // ── [DEV] Test signup real — use sparingly, consumes email rate limit ─────────
+  const handleTestSignup = async () => {
+    console.log('DEV_SIGNUP_TEST_CLICKED');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'MISSING';
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+
+    const testEmail = `sololatinas.dev.${Date.now()}@gmail.com`;
+    setDebugInfo(`[signup test]\nCALLING_SIGNUP → ${testEmail}`);
+    console.log('DEV_SIGNUP_EMAIL', testEmail);
+
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+    } catch (err: any) {
+      setDebugInfo((p) => `${p}\nCLIENT_ERROR: ${err?.message}`);
       return;
     }
 
-    console.log('SIGNUP_RESULT', {
-      user_id: result.data?.user?.id,
-      session: !!result.data?.session,
-      error_message: result.error?.message,
-      error_status: result.error?.status,
-      error_name: (result.error as any)?.name,
-    });
-
-    if (result.error) {
-      setDebugInfo((p) =>
-        `${p}\nSIGNUP_ERROR:\n  msg=${result.error!.message}\n  status=${result.error!.status}\n  name=${(result.error as any)?.name}`
-      );
-    } else {
-      setDebugInfo((p) =>
-        `${p}\nSIGNUP_OK:\n  user=${result.data?.user?.id ?? 'null'}\n  session=${!!result.data?.session}`
-      );
-    }
-
-    // Step 4: raw fetch as fallback — bypasses the Supabase client entirely
-    console.log('RAW_FETCH_TEST starting...');
-    setDebugInfo((p) => `${p}\nRAW_FETCH starting...`);
     try {
-      const rawEmail = `sololatinas.raw.${Date.now()}@gmail.com`;
-      const resp = await fetch(`${supabaseUrl}/auth/v1/signup`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': anonKey,
-        },
-        body: JSON.stringify({ email: rawEmail, password: 'Password123!' }),
+      const result = await supabase.auth.signUp({ email: testEmail, password: 'Password123!' });
+      console.log('DEV_SIGNUP_RESULT', {
+        user_id: result.data?.user?.id,
+        session: !!result.data?.session,
+        error_message: result.error?.message,
+        error_status: result.error?.status,
       });
-      const body = await resp.json().catch(() => resp.text());
-      console.log('RAW_FETCH_RESULT', { status: resp.status, body });
-      setDebugInfo((p) =>
-        `${p}\nRAW_FETCH status=${resp.status}\nbody=${JSON.stringify(body).slice(0, 200)}`
-      );
+
+      if (result.error) {
+        const isRateLimit =
+          result.error.status === 429 ||
+          result.error.message.includes('rate_limit') ||
+          result.error.message.includes('over_email_send_rate_limit');
+        setDebugInfo((p) =>
+          `${p}\n${isRateLimit
+            ? '⚠ RATE LIMIT: Supabase bloqueó temporalmente nuevos emails.\n  Espera unos minutos antes de reintentar.'
+            : `SIGNUP_ERROR:\n  msg=${result.error!.message}\n  status=${result.error!.status}\n  name=${(result.error as any)?.name}`
+          }`
+        );
+      } else {
+        setDebugInfo((p) =>
+          `${p}\nSIGNUP_OK ✓\n  user=${result.data?.user?.id ?? 'null'}\n  session=${!!result.data?.session}\n  → revisar Authentication → Users en Supabase`
+        );
+      }
     } catch (err: any) {
-      console.error('RAW_FETCH_ERROR', err);
-      setDebugInfo((p) => `${p}\nRAW_FETCH_ERROR: ${err?.message}`);
+      setDebugInfo((p) => `${p}\nSIGNUP_THREW: ${err?.message}`);
     }
   };
 
@@ -356,14 +369,23 @@ export default function AuthClient() {
             </div>
           )}
 
-          {/* ── Direct test button — bypasses the form entirely ── */}
-          <button
-            type="button"
-            onClick={handleDirectTest}
-            className="w-full mb-4 py-2 px-3 rounded-lg border border-dashed border-zinc-600 text-zinc-400 text-xs font-mono hover:border-zinc-400 hover:text-zinc-200 transition-colors"
-          >
-            [DEV] Test Supabase SignUp Directo
-          </button>
+          {/* ── DEV diagnostic buttons ── */}
+          <div className="mb-4 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              className="w-full py-2 px-3 rounded-lg border border-dashed border-zinc-600 text-zinc-400 text-xs font-mono hover:border-emerald-600 hover:text-emerald-400 transition-colors"
+            >
+              [DEV] Test Supabase connection (sin email)
+            </button>
+            <button
+              type="button"
+              onClick={handleTestSignup}
+              className="w-full py-2 px-3 rounded-lg border border-dashed border-amber-800/60 text-amber-600/80 text-xs font-mono hover:border-amber-600 hover:text-amber-400 transition-colors"
+            >
+              [DEV] Test signup real ⚠ consume rate limit — usar con cuidado
+            </button>
+          </div>
 
           {/* Tabs */}
           <div className="flex bg-muted rounded-lg p-1 mb-8">
