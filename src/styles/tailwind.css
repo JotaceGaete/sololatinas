@@ -333,3 +333,36 @@
   animation: shimmer 1.5s infinite;
   border-radius: calc(var(--radius) - 2px);
 }
+
+.story-html-content p {
+  margin-bottom: 1.75rem;
+  text-align: justify;
+}
+
+.story-html-content h1,
+.story-html-content h2,
+.story-html-content h3,
+.story-html-content h4 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+}
+
+.story-html-content em,
+.story-html-content i {
+  font-style: italic;
+}
+
+.story-html-content strong,
+.story-html-content b {
+  font-weight: 700;
+}
+
+.story-html-content blockquote {
+  border-left: 3px solid var(--primary);
+  padding-left: 1.25rem;
+  margin: 1.5rem 0;
+  font-style: italic;
+  opacity: 0.85;
+}
