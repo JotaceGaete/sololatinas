@@ -7,9 +7,10 @@ import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import RichTextEditor from './RichTextEditor';
 import PreviewModal from './PreviewModal';
+import FormatSelector, { type FormatoCreacion } from './FormatSelector';
 import {
   PenLine, ImagePlus, Tags, Globe, BookOpen,
-  Sparkles, Eye, Save, Send, X, ChevronDown
+  Sparkles, Eye, Save, Send, X, ChevronDown, ArrowLeft
 } from 'lucide-react';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -71,6 +72,7 @@ export default function EscribirRelatoClient() {
   const [tagInput, setTagInput] = useState('');
   const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
   const [showTagDropdown, setShowTagDropdown] = useState(false);
+  const [formato, setFormato] = useState<FormatoCreacion | null>(null);
   const [saving, setSaving] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -278,13 +280,34 @@ export default function EscribirRelatoClient() {
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
+  if (!formato) {
+    return (
+      <FormatSelector
+        onSelect={(f) => {
+          if (f === 'historia') {
+            router.push('/escribir-historia');
+          } else {
+            setFormato(f);
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
       {/* Page Header */}
       <div className="mb-10 text-center">
+        <button
+          onClick={() => setFormato(null)}
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-6"
+        >
+          <ArrowLeft size={12} />
+          Cambiar formato
+        </button>
         <div className="inline-flex items-center gap-2 text-primary/70 text-sm font-medium mb-3">
           <PenLine size={16} />
-          <span>Nueva Historia</span>
+          <span>Relato corto</span>
         </div>
         <h1 className="font-display text-3xl md:text-4xl font-bold text-gradient-gold mb-3">
           Escribe tu Relato
