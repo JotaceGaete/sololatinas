@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import StoryCard from '@/components/ui/StoryCard';
-import { mockStories } from '@/lib/mockData';
+import type { Story } from '@/lib/mockData';
+import { createClient } from '@/lib/supabase/client';
 import { Search, Filter, SlidersHorizontal, X, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
 
 const allTags = ['pasión', 'romance', 'noche', 'encuentro', 'intimidad', 'amor', 'deseo', 'secreto', 'baile', 'verano', 'cartas', 'mar'];
@@ -22,7 +23,48 @@ const sortOptions = [
 
 const ITEMS_PER_PAGE = 9;
 
+interface RelatoRow {
+  id: string;
+  titulo: string;
+  cuerpo: string | null;
+  extracto: string | null;
+  tags: string[] | null;
+  pais: string | null;
+  categoria: string | null;
+  imagen_url: string | null;
+  vistas: number | null;
+  likes: number | null;
+  estado: string;
+  tiempo_lectura: number | null;
+  created_at: string;
+  autor_id: string | null;
+}
+
+function mapToStory(r: RelatoRow): Story {
+  return {
+    id: r.id,
+    title: r.titulo ?? '',
+    author: 'Autora',
+    authorId: r.autor_id ?? '',
+    country: r.pais ?? '',
+    excerpt: r.extracto ?? '',
+    fullText: r.cuerpo ?? r.extracto ?? '',
+    coverImage: r.imagen_url ?? '',
+    tags: r.tags ?? [],
+    readingTime: r.tiempo_lectura ?? 5,
+    views: r.vistas ?? 0,
+    likes: r.likes ?? 0,
+    isPremium: false,
+    status: (r.estado as Story['status']) ?? 'publicado',
+    publishedAt: r.created_at,
+    genre: r.categoria ?? 'Romance',
+  };
+}
+
 export default function StoriesLibraryClient() {
+  const [stories, setStories] = useState<Story[]>([]);
+  const [loadingStories, setLoadingStories] = useState(true);
+
   const [search, setSearch] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
@@ -32,6 +74,26 @@ export default function StoriesLibraryClient() {
   const [currentPage, setCurrentPage] = useState(1);
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const [showPremiumOnly, setShowPremiumOnly] = useState(false);
+
+  useEffect(() => {
+    const supabase = createClient();
+    async function fetchStories() {
+      setLoadingStories(true);
+      const { data, error } = await supabase
+        .from('relatos')
+        .select('id, titulo, extracto, cuerpo, tags, pais, categoria, imagen_url, vistas, likes, estado, tiempo_lectura, created_at, autor_id')
+        .in('estado', ['publicado', 'published'])
+        .order('created_at', { ascending: false });
+
+      console.log('PUBLIC_RELATOS_QUERY', { data, error });
+
+      if (data) {
+        setStories((data as RelatoRow[]).map(mapToStory));
+      }
+      setLoadingStories(false);
+    }
+    fetchStories();
+  }, []);
 
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
@@ -65,7 +127,7 @@ export default function StoriesLibraryClient() {
   };
 
   const filtered = useMemo(() => {
-    let result = [...mockStories];
+    let result = [...stories];
 
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -109,7 +171,7 @@ export default function StoriesLibraryClient() {
     });
 
     return result;
-  }, [search, selectedTags, selectedCountries, selectedGenres, selectedLength, sortBy, showPremiumOnly]);
+  }, [stories, search, selectedTags, selectedCountries, selectedGenres, selectedLength, sortBy, showPremiumOnly]);
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -118,9 +180,10 @@ export default function StoriesLibraryClient() {
     selectedTags.length + selectedCountries.length + selectedGenres.length +
     (selectedLength ? 1 : 0) + (showPremiumOnly ? 1 : 0);
 
+  const uniqueCountries = [...new Set(stories.map((s) => s.country).filter(Boolean))];
+
   const FilterPanel = () => (
     <div className="space-y-6">
-      {/* Sort */}
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
           Ordenar por
@@ -132,7 +195,7 @@ export default function StoriesLibraryClient() {
               onClick={() => setSortBy(opt.value)}
               className={`w-full text-left px-3 py-2 text-sm rounded-md transition-all ${
                 sortBy === opt.value
-                  ? 'bg-primary/15 text-primary font-medium' :'text-muted-foreground hover:text-foreground hover:bg-white/5'
+                  ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-white/5'
               }`}
             >
               {opt.label}
@@ -143,7 +206,6 @@ export default function StoriesLibraryClient() {
 
       <div className="gold-divider" />
 
-      {/* Country */}
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
           País de origen
@@ -168,7 +230,6 @@ export default function StoriesLibraryClient() {
 
       <div className="gold-divider" />
 
-      {/* Genre */}
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
           Género
@@ -193,7 +254,6 @@ export default function StoriesLibraryClient() {
 
       <div className="gold-divider" />
 
-      {/* Reading Time */}
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
           Tiempo de lectura
@@ -219,7 +279,6 @@ export default function StoriesLibraryClient() {
 
       <div className="gold-divider" />
 
-      {/* Tags */}
       <div>
         <h3 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-3">
           Etiquetas
@@ -241,7 +300,6 @@ export default function StoriesLibraryClient() {
 
       <div className="gold-divider" />
 
-      {/* Premium Toggle */}
       <label className="flex items-center justify-between cursor-pointer">
         <span className="text-sm text-muted-foreground">Solo Premium</span>
         <div
@@ -268,7 +326,6 @@ export default function StoriesLibraryClient() {
 
   return (
     <div className="pt-20 min-h-screen">
-      {/* Page Header */}
       <div className="bg-surface border-b border-border px-6 lg:px-10 py-10 max-w-screen-2xl mx-auto">
         <div className="flex items-center gap-2 mb-2">
           <BookOpen size={16} className="text-primary" />
@@ -278,13 +335,14 @@ export default function StoriesLibraryClient() {
           Todos los <span className="text-gradient-gold italic">Relatos</span>
         </h1>
         <p className="text-muted-foreground text-sm">
-          {mockStories.length} historias de {[...new Set(mockStories.map((s) => s.country))].length} países
+          {loadingStories
+            ? 'Cargando relatos…'
+            : `${stories.length} historia${stories.length !== 1 ? 's' : ''} de ${uniqueCountries.length} país${uniqueCountries.length !== 1 ? 'es' : ''}`}
         </p>
       </div>
 
       <div className="max-w-screen-2xl mx-auto px-6 lg:px-10 py-8">
         <div className="flex gap-8">
-          {/* Sidebar Filters — Desktop */}
           <aside className="hidden lg:block w-60 xl:w-64 flex-shrink-0">
             <div className="sticky top-24 bg-surface border border-border rounded-xl p-5">
               <div className="flex items-center justify-between mb-4">
@@ -301,9 +359,7 @@ export default function StoriesLibraryClient() {
             </div>
           </aside>
 
-          {/* Main Content */}
           <div className="flex-1 min-w-0">
-            {/* Search + Sort Bar */}
             <div className="flex flex-col sm:flex-row gap-3 mb-6">
               <div className="relative flex-1">
                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -338,7 +394,6 @@ export default function StoriesLibraryClient() {
               </button>
             </div>
 
-            {/* Active Filter Chips */}
             {activeFilterCount > 0 && (
               <div className="flex flex-wrap gap-2 mb-5">
                 {selectedTags.map((tag) => (
@@ -366,14 +421,25 @@ export default function StoriesLibraryClient() {
               </div>
             )}
 
-            {/* Results Count */}
             <p className="text-xs text-muted-foreground mb-5">
-              {filtered.length} relatos encontrados
-              {currentPage > 1 && ` — Página ${currentPage} de ${totalPages}`}
+              {loadingStories
+                ? 'Cargando…'
+                : `${filtered.length} relatos encontrados${currentPage > 1 ? ` — Página ${currentPage} de ${totalPages}` : ''}`}
             </p>
 
-            {/* Story Grid */}
-            {paginated.length > 0 ? (
+            {loadingStories ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-5 mb-8">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={`skeleton-${i}`} className="story-card animate-pulse">
+                    <div className="h-52 bg-surface-elevated rounded-t-xl" />
+                    <div className="p-4 space-y-2">
+                      <div className="h-4 bg-surface-elevated rounded w-3/4" />
+                      <div className="h-3 bg-surface-elevated rounded w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : paginated.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3 gap-5 mb-8">
                 {paginated.map((story) => (
                   <StoryCard key={`library-story-${story.id}`} story={story} />
@@ -383,18 +449,23 @@ export default function StoriesLibraryClient() {
               <div className="text-center py-20 bg-surface border border-border rounded-xl">
                 <BookOpen size={40} className="text-muted-foreground mx-auto mb-4" />
                 <h3 className="font-display text-xl text-foreground mb-2">
-                  No encontramos relatos con esos filtros
+                  {stories.length === 0
+                    ? 'Aún no hay relatos publicados'
+                    : 'No encontramos relatos con esos filtros'}
                 </h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  Prueba con otros términos o elimina algunos filtros para ver más historias.
+                  {stories.length === 0
+                    ? 'Vuelve pronto, las autoras están escribiendo.'
+                    : 'Prueba con otros términos o elimina algunos filtros para ver más historias.'}
                 </p>
-                <button onClick={clearFilters} className="btn-outline">
-                  Limpiar filtros
-                </button>
+                {activeFilterCount > 0 && (
+                  <button onClick={clearFilters} className="btn-outline">
+                    Limpiar filtros
+                  </button>
+                )}
               </div>
             )}
 
-            {/* Pagination */}
             {totalPages > 1 && (
               <div className="flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">
@@ -436,7 +507,6 @@ export default function StoriesLibraryClient() {
         </div>
       </div>
 
-      {/* Mobile Filters Drawer */}
       {mobileFiltersOpen && (
         <div className="fixed inset-0 z-[100] flex animate-fade-in lg:hidden">
           <div className="absolute inset-0 bg-black/70" onClick={() => setMobileFiltersOpen(false)} />

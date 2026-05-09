@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import StoryCard from '@/components/ui/StoryCard';
-import { mockStories } from '@/lib/mockData';
+import type { Story } from '@/lib/mockData';
+import { createClient } from '@/lib/supabase/client';
 import { MapPin } from 'lucide-react';
 
 const countries = ['Todos', 'Colombia', 'México', 'Argentina', 'España', 'Venezuela', 'Chile'];
@@ -17,12 +18,67 @@ const countryFlags: Record<string, string> = {
   Chile: '🇨🇱',
 };
 
+interface RelatoRow {
+  id: string;
+  titulo: string;
+  cuerpo: string | null;
+  extracto: string | null;
+  tags: string[] | null;
+  pais: string | null;
+  categoria: string | null;
+  imagen_url: string | null;
+  vistas: number | null;
+  likes: number | null;
+  estado: string;
+  tiempo_lectura: number | null;
+  created_at: string;
+  autor_id: string | null;
+}
+
+function mapToStory(r: RelatoRow): Story {
+  return {
+    id: r.id,
+    title: r.titulo ?? '',
+    author: 'Autora',
+    authorId: r.autor_id ?? '',
+    country: r.pais ?? '',
+    excerpt: r.extracto ?? '',
+    fullText: r.cuerpo ?? r.extracto ?? '',
+    coverImage: r.imagen_url ?? '',
+    tags: r.tags ?? [],
+    readingTime: r.tiempo_lectura ?? 5,
+    views: r.vistas ?? 0,
+    likes: r.likes ?? 0,
+    isPremium: false,
+    status: (r.estado as Story['status']) ?? 'publicado',
+    publishedAt: r.created_at,
+    genre: r.categoria ?? 'Romance',
+  };
+}
+
 export default function CountrySection() {
   const [activeCountry, setActiveCountry] = useState('Todos');
+  const [allStories, setAllStories] = useState<Story[]>([]);
 
-  const filtered = activeCountry === 'Todos'
-    ? mockStories.slice(0, 6)
-    : mockStories.filter((s) => s.country === activeCountry).slice(0, 6);
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from('relatos')
+      .select('id, titulo, extracto, cuerpo, tags, pais, categoria, imagen_url, vistas, likes, estado, tiempo_lectura, created_at, autor_id')
+      .in('estado', ['publicado', 'published'])
+      .order('created_at', { ascending: false })
+      .limit(60)
+      .then(({ data }) => {
+        if (data) setAllStories((data as RelatoRow[]).map(mapToStory));
+      });
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (activeCountry === 'Todos') return allStories.slice(0, 6);
+    return allStories.filter((s) => s.country === activeCountry).slice(0, 6);
+  }, [allStories, activeCountry]);
+
+  if (allStories.length === 0) return null;
 
   return (
     <section className="py-20 max-w-screen-2xl mx-auto px-6 lg:px-10">
@@ -35,7 +91,6 @@ export default function CountrySection() {
           Historias de <span className="text-gradient-gold italic">toda Latinoamérica</span>
         </h2>
 
-        {/* Country Tabs */}
         <div className="flex flex-wrap gap-2">
           {countries.map((country) => (
             <button

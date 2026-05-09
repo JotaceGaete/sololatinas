@@ -1,15 +1,70 @@
-import React from 'react';
+'use client';
+
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import StoryCard from '@/components/ui/StoryCard';
-import { mockStories } from '@/lib/mockData';
+import type { Story } from '@/lib/mockData';
+import { createClient } from '@/lib/supabase/client';
 import { TrendingUp, ChevronRight } from 'lucide-react';
 
+interface RelatoRow {
+  id: string;
+  titulo: string;
+  cuerpo: string | null;
+  extracto: string | null;
+  tags: string[] | null;
+  pais: string | null;
+  categoria: string | null;
+  imagen_url: string | null;
+  vistas: number | null;
+  likes: number | null;
+  estado: string;
+  tiempo_lectura: number | null;
+  created_at: string;
+  autor_id: string | null;
+}
+
+function mapToStory(r: RelatoRow): Story {
+  return {
+    id: r.id,
+    title: r.titulo ?? '',
+    author: 'Autora',
+    authorId: r.autor_id ?? '',
+    country: r.pais ?? '',
+    excerpt: r.extracto ?? '',
+    fullText: r.cuerpo ?? r.extracto ?? '',
+    coverImage: r.imagen_url ?? '',
+    tags: r.tags ?? [],
+    readingTime: r.tiempo_lectura ?? 5,
+    views: r.vistas ?? 0,
+    likes: r.likes ?? 0,
+    isPremium: false,
+    status: (r.estado as Story['status']) ?? 'publicado',
+    publishedAt: r.created_at,
+    genre: r.categoria ?? 'Romance',
+  };
+}
+
 export default function AcclaimedStories() {
-  const acclaimed = mockStories?.filter((s) => s?.status === 'destacado' || s?.views > 25000)?.slice(0, 6);
+  const [acclaimed, setAcclaimed] = useState<Story[]>([]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from('relatos')
+      .select('id, titulo, extracto, cuerpo, tags, pais, categoria, imagen_url, vistas, likes, estado, tiempo_lectura, created_at, autor_id')
+      .in('estado', ['publicado', 'published'])
+      .order('vistas', { ascending: false })
+      .limit(6)
+      .then(({ data }) => {
+        if (data) setAcclaimed((data as RelatoRow[]).map(mapToStory));
+      });
+  }, []);
+
+  if (acclaimed.length === 0) return null;
 
   return (
     <section className="py-20 max-w-screen-2xl mx-auto px-6 lg:px-10">
-      {/* Section Header */}
       <div className="flex items-end justify-between mb-10">
         <div>
           <div className="flex items-center gap-2 mb-2">
@@ -30,15 +85,14 @@ export default function AcclaimedStories() {
           Ver todos <ChevronRight size={16} />
         </Link>
       </div>
-      {/* Grid: 1 featured + 5 default */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-3 gap-5">
-        {acclaimed?.[0] && (
+        {acclaimed[0] && (
           <div className="md:col-span-2 lg:col-span-1">
-            <StoryCard story={acclaimed?.[0]} variant="featured" />
+            <StoryCard story={acclaimed[0]} variant="featured" />
           </div>
         )}
-        {acclaimed?.slice(1, 6)?.map((story) => (
-          <div key={`acclaimed-${story?.id}`}>
+        {acclaimed.slice(1, 6).map((story) => (
+          <div key={`acclaimed-${story.id}`}>
             <StoryCard story={story} />
           </div>
         ))}

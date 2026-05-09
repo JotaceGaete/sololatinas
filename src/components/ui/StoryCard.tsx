@@ -23,7 +23,7 @@ const countryFlags: Record<string, string> = {
 export default function StoryCard({ story, variant = 'default' }: StoryCardProps) {
   if (variant === 'compact') {
     return (
-      <Link href="/immersive-reading-mode" className="block">
+      <Link href={`/immersive-reading-mode?id=${story.id}`} className="block">
         <div className="story-card flex gap-3 p-3 group cursor-pointer">
           <div className="relative w-16 h-20 flex-shrink-0 overflow-hidden rounded-md">
             <AppImage
@@ -52,7 +52,7 @@ export default function StoryCard({ story, variant = 'default' }: StoryCardProps
 
   if (variant === 'featured') {
     return (
-      <Link href="/immersive-reading-mode" className="block">
+      <Link href={`/immersive-reading-mode?id=${story.id}`} className="block">
         <div className="story-card group cursor-pointer relative overflow-hidden h-96">
           <AppImage
             src={story.coverImage}
@@ -100,7 +100,7 @@ export default function StoryCard({ story, variant = 'default' }: StoryCardProps
   }
 
   return (
-    <Link href="/immersive-reading-mode" className="block">
+    <Link href={`/immersive-reading-mode?id=${story.id}`} className="block">
       <div className="story-card group cursor-pointer">
         <div className="relative h-52 overflow-hidden">
           <AppImage

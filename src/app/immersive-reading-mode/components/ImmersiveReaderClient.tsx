@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import StoryCard from '@/components/ui/StoryCard';
-import { mockStories } from '@/lib/mockData';
+import { createClient } from '@/lib/supabase/client';
+import type { Story } from '@/lib/mockData';
 import { X, ChevronLeft, BookmarkPlus, Share2, Heart, Sun, Moon, Coffee, Type, Minus, Plus, Eye, BookOpen, AlignJustify, ArrowLeft, ArrowRight, Library, Sparkles, CheckCircle } from 'lucide-react';
 import StoryReactions from './StoryReactions';
 import StoryComments from './StoryComments';
@@ -82,7 +84,6 @@ function splitIntoPages(text: string, targetWords = TARGET_WORDS_PER_PAGE): stri
 }
 
 function showToast(message: string) {
-  // Simple toast via DOM since we can't import sonner safely
   const el = document.createElement('div');
   el.textContent = message;
   el.style.cssText = `
@@ -100,13 +101,53 @@ function showToast(message: string) {
   }, 2500);
 }
 
-export default function ImmersiveReaderClient() {
-  const story = mockStories[0];
-  const related = mockStories.filter((s) => s.id !== story.id).slice(0, 4);
+interface RelatoRow {
+  id: string;
+  titulo: string;
+  cuerpo: string | null;
+  extracto: string | null;
+  tags: string[] | null;
+  pais: string | null;
+  categoria: string | null;
+  imagen_url: string | null;
+  vistas: number | null;
+  likes: number | null;
+  estado: string;
+  tiempo_lectura: number | null;
+  created_at: string;
+  autor_id: string | null;
+}
 
-  const fullText = story.fullText || story.excerpt;
-  const pages = splitIntoPages(fullText);
-  const totalPages = pages.length;
+function mapToStory(r: RelatoRow): Story {
+  return {
+    id: r.id,
+    title: r.titulo ?? '',
+    author: 'Autora',
+    authorId: r.autor_id ?? '',
+    country: r.pais ?? '',
+    excerpt: r.extracto ?? '',
+    fullText: r.cuerpo ?? r.extracto ?? '',
+    coverImage: r.imagen_url ?? '',
+    tags: r.tags ?? [],
+    readingTime: r.tiempo_lectura ?? 5,
+    views: r.vistas ?? 0,
+    likes: r.likes ?? 0,
+    isPremium: false,
+    status: (r.estado as Story['status']) ?? 'publicado',
+    publishedAt: r.created_at,
+    genre: r.categoria ?? 'Romance',
+  };
+}
+
+export default function ImmersiveReaderClient() {
+  const searchParams = useSearchParams();
+  const storyId = searchParams.get('id');
+  const isPreview = searchParams.get('preview') === '1';
+
+  const [story, setStory] = useState<Story | null>(null);
+  const [related, setRelated] = useState<Story[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
 
   const [theme, setTheme] = useState<ReaderTheme>('dark');
   const [fontSize, setFontSize] = useState(19);
@@ -115,10 +156,10 @@ export default function ImmersiveReaderClient() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(story.likes);
+  const [likeCount, setLikeCount] = useState(0);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isSubscribed] = useState(true); // Full access for demo
+  const [isSubscribed] = useState(true);
   const [showEndScreen, setShowEndScreen] = useState(false);
   const [modePickerOpen, setModePickerOpen] = useState(false);
   const [showComments, setShowComments] = useState(false);
@@ -126,10 +167,62 @@ export default function ImmersiveReaderClient() {
   const contentRef = useRef<HTMLDivElement>(null);
   const pageTopRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!storyId) {
+      setLoading(false);
+      setNotFound(true);
+      return;
+    }
+
+    const supabase = createClient();
+
+    async function fetchStory() {
+      setLoading(true);
+      setNotFound(false);
+
+      let query = supabase.from('relatos').select('*').eq('id', storyId!);
+      if (!isPreview) {
+        query = query.in('estado', ['publicado', 'published']);
+      }
+
+      const { data, error } = await query.single();
+      console.log('RELATO_DETAIL_QUERY', { id: storyId, data, error });
+
+      if (error || !data) {
+        console.log('RELATO_DETAIL_QUERY: not found', { id: storyId, error });
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+
+      const mapped = mapToStory(data as RelatoRow);
+      setStory(mapped);
+      setLikeCount(mapped.likes);
+
+      const { data: relatedData } = await supabase
+        .from('relatos')
+        .select('*')
+        .in('estado', ['publicado', 'published'])
+        .neq('id', storyId!)
+        .limit(4);
+
+      if (relatedData) {
+        setRelated((relatedData as RelatoRow[]).map(mapToStory));
+      }
+
+      setLoading(false);
+    }
+
+    fetchStory();
+  }, [storyId, isPreview]);
+
+  const fullText = story ? (story.fullText || story.excerpt) : '';
+  const pages = story ? splitIntoPages(fullText) : [''];
+  const totalPages = pages.length;
+
   const tc = themeConfig[theme];
   const ff = fontFamilies[fontFamily];
 
-  // Scroll progress for scroll mode
   useEffect(() => {
     if (readingMode !== 'scroll') return;
     const handleScroll = () => {
@@ -140,7 +233,6 @@ export default function ImmersiveReaderClient() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, [readingMode]);
 
-  // Paginated progress
   const paginatedProgress = readingMode === 'paginated' ? Math.round((currentPage / totalPages) * 100) : scrollProgress;
 
   const scrollToTop = useCallback(() => {
@@ -160,15 +252,11 @@ export default function ImmersiveReaderClient() {
   }, [totalPages, scrollToTop]);
 
   const handleNextPage = () => {
-    if (currentPage < totalPages) {
-      goToPage(currentPage + 1);
-    }
+    if (currentPage < totalPages) goToPage(currentPage + 1);
   };
 
   const handlePrevPage = () => {
-    if (currentPage > 1) {
-      goToPage(currentPage - 1);
-    }
+    if (currentPage > 1) goToPage(currentPage - 1);
   };
 
   const handleBookmark = () => {
@@ -199,10 +287,46 @@ export default function ImmersiveReaderClient() {
     scrollToTop();
   };
 
-  const topBarBg = theme === 'cream' ?'bg-[#F5EFE6]/95 border-b border-[#C4A882]' :'bg-[#0D0B0A]/95 border-b border-[#2E2420]';
-
+  const topBarBg = theme === 'cream' ? 'bg-[#F5EFE6]/95 border-b border-[#C4A882]' : 'bg-[#0D0B0A]/95 border-b border-[#2E2420]';
   const topBarText = theme === 'cream' ? 'text-[#2C1F0E]' : 'text-[#F5EFE6]';
   const topBarMuted = theme === 'cream' ? 'text-[#8B6914]' : 'text-[#9A8A7A]';
+
+  // ── Loading state ──
+  if (loading) {
+    return (
+      <div className={`min-h-screen ${themeConfig.dark.bg} flex items-center justify-center`}>
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-[#C9A96E]/30 border-t-[#C9A96E] rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-[#9A8A7A] text-sm">Cargando relato…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Not found state ──
+  if (notFound || !story) {
+    console.log('RELATO_DETAIL_QUERY: rendering not-found', { storyId });
+    return (
+      <div className={`min-h-screen ${themeConfig.dark.bg} flex items-center justify-center`}>
+        <div className="text-center max-w-md px-6">
+          <div className="text-5xl mb-6">📖</div>
+          <h1 className="font-display text-2xl font-bold text-[#F5EFE6] mb-3">Relato no encontrado</h1>
+          <p className="text-[#9A8A7A] text-sm mb-8">
+            {storyId
+              ? `No se encontró ningún relato publicado con el identificador solicitado.`
+              : 'No se especificó ningún relato. Selecciona uno desde la biblioteca.'}
+          </p>
+          <Link
+            href="/stories-library"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-[#C9A96E] text-[#0D0B0A] rounded-xl text-sm font-semibold hover:bg-[#E8C97A] transition-colors"
+          >
+            <Library size={16} />
+            Ir a la Biblioteca
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${tc.bg}`}>
@@ -225,7 +349,6 @@ export default function ImmersiveReaderClient() {
 
       {/* ── FIXED TOP BAR ── */}
       <div className={`fixed top-0 left-0 right-0 z-50 backdrop-blur-md ${topBarBg}`}>
-        {/* Progress bar */}
         <div className="h-0.5 bg-transparent">
           <div
             className="h-full bg-[#C9A96E] transition-all duration-300"
@@ -234,7 +357,6 @@ export default function ImmersiveReaderClient() {
         </div>
 
         <div className="flex items-center justify-between px-4 lg:px-8 h-14 gap-3">
-          {/* Left: Back + Title */}
           <div className="flex items-center gap-3 min-w-0 flex-1">
             <Link
               href="/stories-library"
@@ -249,7 +371,6 @@ export default function ImmersiveReaderClient() {
             </span>
           </div>
 
-          {/* Center: Progress indicator (paginated) */}
           {readingMode === 'paginated' && (
             <div className={`flex items-center gap-2 text-xs ${topBarMuted} shrink-0`}>
               <span className="hidden xs:inline">Página</span>
@@ -265,9 +386,7 @@ export default function ImmersiveReaderClient() {
             </div>
           )}
 
-          {/* Right: Actions */}
           <div className="flex items-center gap-1 shrink-0">
-            {/* Mode toggle */}
             <div className="relative">
               <button
                 onClick={() => setModePickerOpen((v) => !v)}
@@ -353,7 +472,6 @@ export default function ImmersiveReaderClient() {
             </button>
           </div>
 
-          {/* Font Size */}
           <div className="mb-5">
             <p className={`text-xs mb-2.5 flex items-center gap-1.5 ${topBarMuted}`}>
               <Type size={12} /> Tamaño de texto
@@ -375,7 +493,6 @@ export default function ImmersiveReaderClient() {
             </div>
           </div>
 
-          {/* Font Family */}
           <div className="mb-5">
             <p className={`text-xs mb-2.5 ${topBarMuted}`}>Tipografía</p>
             <div className="flex gap-2">
@@ -395,7 +512,6 @@ export default function ImmersiveReaderClient() {
             </div>
           </div>
 
-          {/* Theme */}
           <div>
             <p className={`text-xs mb-2.5 ${topBarMuted}`}>Tema de lectura</p>
             <div className="flex gap-2">
@@ -418,7 +534,6 @@ export default function ImmersiveReaderClient() {
         </div>
       )}
 
-      {/* Click outside to close overlays */}
       {(settingsOpen || modePickerOpen) && (
         <div
           className="fixed inset-0 z-30"
@@ -431,21 +546,23 @@ export default function ImmersiveReaderClient() {
         <div className="px-4 sm:px-6 pb-8">
           <article className="max-w-2xl mx-auto">
 
-            {/* Cover Image — only on first page / scroll mode */}
             {(readingMode === 'scroll' || currentPage === 1) && (
               <div className="relative h-64 sm:h-80 rounded-2xl overflow-hidden mb-10 mt-8">
-                <AppImage
-                  src={story.coverImage}
-                  alt={`Ilustración artística para el relato ${story.title} - escena romántica con iluminación cálida y dorada`}
-                  fill
-                  priority
-                  className="object-cover"
-                />
+                {story.coverImage ? (
+                  <AppImage
+                    src={story.coverImage}
+                    alt={`Ilustración artística para el relato ${story.title}`}
+                    fill
+                    priority
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full bg-gradient-to-br from-[#2C1F0E] to-[#0D0B0A]" />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
               </div>
             )}
 
-            {/* Story Header — only on first page / scroll mode */}
             {(readingMode === 'scroll' || currentPage === 1) && (
               <div className="mb-10 text-center">
                 <div className="flex flex-wrap justify-center gap-1.5 mb-4">
@@ -465,10 +582,8 @@ export default function ImmersiveReaderClient() {
                   {story.title}
                 </h1>
                 <div className={`flex items-center justify-center gap-4 text-sm ${topBarMuted}`}>
-                  <span className="font-medium text-[#C9A96E]">{story.author}</span>
-                  <span>·</span>
-                  <span>{story.country}</span>
-                  <span>·</span>
+                  {story.country && <span>{story.country}</span>}
+                  {story.country && <span>·</span>}
                   <span>{story.readingTime} min de lectura</span>
                 </div>
                 <div className="flex items-center justify-center gap-4 mt-4">
@@ -493,14 +608,12 @@ export default function ImmersiveReaderClient() {
             {/* ── PAGINATED MODE ── */}
             {readingMode === 'paginated' && (
               <div ref={contentRef} key={`page-${currentPage}`} className="page-animate">
-                {/* Page number indicator (top of page, subtle) */}
                 {currentPage > 1 && (
                   <div className={`text-center mb-8 text-xs ${topBarMuted}`}>
                     — Página {currentPage} de {totalPages} —
                   </div>
                 )}
 
-                {/* Page content */}
                 <div
                   className={`leading-[1.95] ${tc.text} ${ff.class}`}
                   style={{ fontSize: `${fontSize}px` }}
@@ -512,24 +625,19 @@ export default function ImmersiveReaderClient() {
                   ))}
                 </div>
 
-                {/* ── END SCREEN (last page) ── */}
                 {currentPage === totalPages && (
                   <div className="end-screen-animate mt-16 mb-8">
                     <div className="h-px bg-gradient-to-r from-transparent via-[#C9A96E]/50 to-transparent mb-12" />
 
                     <div className="text-center">
-                      {/* Fin del relato */}
                       <div className="inline-flex items-center gap-3 mb-6">
                         <div className="h-px w-12 bg-[#C9A96E]/40" />
                         <Sparkles size={18} className="text-[#C9A96E]" />
                         <div className="h-px w-12 bg-[#C9A96E]/40" />
                       </div>
-                      <p className={`font-display text-2xl italic mb-2 ${tc.text}`}>
-                        Fin del relato
-                      </p>
+                      <p className={`font-display text-2xl italic mb-2 ${tc.text}`}>Fin del relato</p>
                       <p className={`text-sm mb-10 ${topBarMuted}`}>— {story.author}</p>
 
-                      {/* Action buttons */}
                       <div className="flex flex-col sm:flex-row gap-3 justify-center max-w-md mx-auto">
                         <button
                           onClick={handleLike}
@@ -560,12 +668,10 @@ export default function ImmersiveReaderClient() {
                         </Link>
                       </div>
 
-                      {/* Reactions */}
                       <div className={`mt-12 pt-10 border-t ${tc.borderColor}`}>
                         <StoryReactions relatoId={story.id} theme={theme} />
                       </div>
 
-                      {/* Comments toggle */}
                       <div className={`mt-10 pt-8 border-t ${tc.borderColor}`}>
                         <button
                           onClick={() => setShowComments((v) => !v)}
@@ -585,32 +691,30 @@ export default function ImmersiveReaderClient() {
                       </div>
                     </div>
 
-                    {/* Related stories */}
-                    <div className="mt-16">
-                      <div className="h-px bg-gradient-to-r from-transparent via-[#C9A96E]/30 to-transparent mb-10" />
-                      <h2 className={`font-display text-xl font-bold text-center mb-6 ${tc.text}`}>
-                        Relatos que también te <span className="text-[#C9A96E] italic">van a atrapar</span>
-                      </h2>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {related.slice(0, 4).map((s) => (
-                          <StoryCard key={`end-related-${s.id}`} story={s} variant="compact" />
-                        ))}
+                    {related.length > 0 && (
+                      <div className="mt-16">
+                        <div className="h-px bg-gradient-to-r from-transparent via-[#C9A96E]/30 to-transparent mb-10" />
+                        <h2 className={`font-display text-xl font-bold text-center mb-6 ${tc.text}`}>
+                          Relatos que también te <span className="text-[#C9A96E] italic">van a atrapar</span>
+                        </h2>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                          {related.slice(0, 4).map((s) => (
+                            <StoryCard key={`end-related-${s.id}`} story={s} variant="compact" />
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
                 )}
 
-                {/* ── PAGE NAVIGATION (bottom) ── */}
                 {currentPage < totalPages && (
                   <div className="mt-14 mb-4">
                     <div className="h-px bg-gradient-to-r from-transparent via-[#C9A96E]/30 to-transparent mb-10" />
 
-                    {/* Progress indicator */}
                     <div className="text-center mb-6">
                       <div className={`text-xs mb-3 ${topBarMuted}`}>
                         Página {currentPage} de {totalPages}
                       </div>
-                      {/* Dot indicators */}
                       <div className="flex items-center justify-center gap-1.5">
                         {Array.from({ length: Math.min(totalPages, 9) }).map((_, i) => {
                           const pageNum = totalPages <= 9 ? i + 1 : Math.round((i / 8) * (totalPages - 1)) + 1;
@@ -630,7 +734,6 @@ export default function ImmersiveReaderClient() {
                       </div>
                     </div>
 
-                    {/* Navigation buttons */}
                     <div className="flex items-center justify-between gap-4">
                       <button
                         onClick={handlePrevPage}
@@ -645,7 +748,6 @@ export default function ImmersiveReaderClient() {
                         Página anterior
                       </button>
 
-                      {/* Continue reading — main CTA */}
                       <button
                         onClick={handleNextPage}
                         className="flex-1 flex items-center justify-center gap-2.5 px-6 py-4 rounded-xl bg-[#C9A96E] text-[#0D0B0A] text-sm font-semibold transition-all hover:bg-[#E8C97A] hover:shadow-lg hover:shadow-[#C9A96E]/20 active:scale-[0.98]"
@@ -674,7 +776,6 @@ export default function ImmersiveReaderClient() {
                   ))}
                 </div>
 
-                {/* End of story in scroll mode */}
                 <div className="mt-16 mb-8">
                   <div className="h-px bg-gradient-to-r from-transparent via-[#C9A96E]/50 to-transparent mb-12" />
                   <div className="text-center">
@@ -714,12 +815,10 @@ export default function ImmersiveReaderClient() {
                       </Link>
                     </div>
 
-                    {/* Reactions - scroll mode */}
                     <div className={`mt-12 pt-10 border-t ${tc.borderColor}`}>
                       <StoryReactions relatoId={story.id} theme={theme} />
                     </div>
 
-                    {/* Comments - scroll mode */}
                     <div className={`mt-10 pt-8 border-t ${tc.borderColor}`}>
                       <button
                         onClick={() => setShowComments((v) => !v)}
