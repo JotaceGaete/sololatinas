@@ -79,6 +79,7 @@ export default function StoriesLibraryClient() {
     const supabase = createClient();
     async function fetchStories() {
       setLoadingStories(true);
+      console.log('[CONFIG] SUPABASE_URL', process.env.NEXT_PUBLIC_SUPABASE_URL);
       const { data, error } = await supabase
         .from('relatos')
         .select('id, titulo, extracto, cuerpo, tags, pais, categoria, imagen_url, vistas, likes, estado, tiempo_lectura, created_at, autor_id')

@@ -51,17 +51,33 @@ const fontFamilies: Record<FontFamily, { label: string; class: string }> = {
   sans: { label: 'Moderna', class: 'font-sans' },
 };
 
+function isHtmlContent(text: string): boolean {
+  return /<[a-z][\s\S]*>/i.test(text);
+}
+
+function sanitizeHtml(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '')
+    .replace(/javascript\s*:/gi, '');
+}
+
 function splitIntoPages(text: string, targetWords = TARGET_WORDS_PER_PAGE): string[] {
-  const paragraphs = text.split(/\n\n+/).filter((p) => p.trim().length > 0);
+  const isHtml = isHtmlContent(text);
+  const paragraphs = isHtml
+    ? text.split(/(?<=<\/(?:p|h[1-6]|blockquote|li)>)\s*/i).filter((p) => p.trim().length > 0)
+    : text.split(/\n\n+/).filter((p) => p.trim().length > 0);
+
   const pages: string[] = [];
   let currentPage: string[] = [];
   let currentWordCount = 0;
 
   for (const paragraph of paragraphs) {
-    const wordCount = paragraph.trim().split(/\s+/).length;
+    const plainText = isHtml ? paragraph.replace(/<[^>]+>/g, '') : paragraph;
+    const wordCount = plainText.trim().split(/\s+/).length;
 
     if (currentWordCount > 0 && currentWordCount + wordCount > WORDS_PER_PAGE_MAX) {
-      pages.push(currentPage.join('\n\n'));
+      pages.push(currentPage.join(isHtml ? '' : '\n\n'));
       currentPage = [paragraph];
       currentWordCount = wordCount;
     } else {
@@ -69,7 +85,7 @@ function splitIntoPages(text: string, targetWords = TARGET_WORDS_PER_PAGE): stri
       currentWordCount += wordCount;
 
       if (currentWordCount >= WORDS_PER_PAGE_MIN && currentWordCount >= targetWords) {
-        pages.push(currentPage.join('\n\n'));
+        pages.push(currentPage.join(isHtml ? '' : '\n\n'));
         currentPage = [];
         currentWordCount = 0;
       }
@@ -77,7 +93,7 @@ function splitIntoPages(text: string, targetWords = TARGET_WORDS_PER_PAGE): stri
   }
 
   if (currentPage.length > 0) {
-    pages.push(currentPage.join('\n\n'));
+    pages.push(currentPage.join(isHtml ? '' : '\n\n'));
   }
 
   return pages.length > 0 ? pages : [text];
@@ -615,14 +631,25 @@ export default function ImmersiveReaderClient() {
                 )}
 
                 <div
-                  className={`leading-[1.95] ${tc.text} ${ff.class}`}
+                  className={`leading-[1.95] ${tc.text} ${ff.class} prose-story`}
                   style={{ fontSize: `${fontSize}px` }}
                 >
-                  {pages[currentPage - 1]?.split('\n\n').map((para, i) => (
-                    <p key={`p-${currentPage}-${i}`} className="mb-7 text-justify">
-                      {para.trim()}
-                    </p>
-                  ))}
+                  {(() => {
+                    const pageContent = pages[currentPage - 1] ?? '';
+                    if (isHtmlContent(pageContent)) {
+                      return (
+                        <div
+                          className="mb-7 text-justify story-html-content"
+                          dangerouslySetInnerHTML={{ __html: sanitizeHtml(pageContent) }}
+                        />
+                      );
+                    }
+                    return pageContent.split('\n\n').map((para, i) => (
+                      <p key={`p-${currentPage}-${i}`} className="mb-7 text-justify">
+                        {para.trim()}
+                      </p>
+                    ));
+                  })()}
                 </div>
 
                 {currentPage === totalPages && (
@@ -766,14 +793,21 @@ export default function ImmersiveReaderClient() {
             {readingMode === 'scroll' && (
               <div ref={contentRef}>
                 <div
-                  className={`leading-[1.95] ${tc.text} ${ff.class}`}
+                  className={`leading-[1.95] ${tc.text} ${ff.class} prose-story`}
                   style={{ fontSize: `${fontSize}px` }}
                 >
-                  {fullText.split('\n\n').map((para, i) => (
-                    <p key={`scroll-p-${i}`} className="mb-7 text-justify">
-                      {para.trim()}
-                    </p>
-                  ))}
+                  {isHtmlContent(fullText) ? (
+                    <div
+                      className="mb-7 text-justify story-html-content"
+                      dangerouslySetInnerHTML={{ __html: sanitizeHtml(fullText) }}
+                    />
+                  ) : (
+                    fullText.split('\n\n').map((para, i) => (
+                      <p key={`scroll-p-${i}`} className="mb-7 text-justify">
+                        {para.trim()}
+                      </p>
+                    ))
+                  )}
                 </div>
 
                 <div className="mt-16 mb-8">
