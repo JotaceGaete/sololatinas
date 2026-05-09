@@ -56,6 +56,7 @@
     "@supabase/supabase-js": "2.105.3",
     "@tailwindcss/forms": "^0.5.10",
     "@tailwindcss/typography": "^0.5.16",
+    "@types/sanitize-html": "^2.16.1",
     "lucide-react": "^1.7.0",
     "next": "15.1.11",
     "react": "19.0.3",
