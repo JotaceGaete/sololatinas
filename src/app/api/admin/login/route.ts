@@ -19,8 +19,24 @@ export async function POST(req: NextRequest) {
   const adminPassword = process.env.ADMIN_PASSWORD;
   const adminSecret = process.env.ADMIN_SECRET;
 
+  console.log('ADMIN_LOGIN_ENV_CHECK', {
+    hasAdminUser: Boolean(adminUser),
+    hasAdminPassword: Boolean(adminPassword),
+    hasAdminSecret: Boolean(adminSecret),
+    hasSupabaseUrl: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL),
+    hasSupabaseAnon: Boolean(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+  });
+
   if (!adminUser || !adminPassword || !adminSecret) {
-    return NextResponse.json({ error: 'Servidor no configurado' }, { status: 500 });
+    const missing = [
+      !adminUser && 'ADMIN_USER',
+      !adminPassword && 'ADMIN_PASSWORD',
+      !adminSecret && 'ADMIN_SECRET',
+    ].filter(Boolean).join(', ');
+    return NextResponse.json(
+      { error: `Servidor no configurado: falta ${missing}` },
+      { status: 500 }
+    );
   }
 
   const userMatch = safeCompare(user, adminUser);
