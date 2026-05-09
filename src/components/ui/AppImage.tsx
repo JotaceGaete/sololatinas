@@ -91,7 +91,7 @@ const AppImage = memo(function AppImage({
 
     // Guard: never pass empty src to <Image> — render a styled placeholder instead
     const isValidSrc = typeof imageSrc === 'string' && imageSrc.trim() !== '';
-    if (!isValidSrc) {
+    if (!isValidSrc || (hasError && imageSrc === fallbackSrc)) {
         return <GradientPlaceholder fill={fill} width={width} height={height} className={className} />;
     }
 

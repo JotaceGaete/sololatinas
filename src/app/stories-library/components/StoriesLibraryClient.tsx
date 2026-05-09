@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import StoryCard from '@/components/ui/StoryCard';
 import type { Story } from '@/lib/mockData';
 import { createClient } from '@/lib/supabase/client';
+import { getRelatoImageUrl } from '@/lib/relato-display';
 import { Search, Filter, SlidersHorizontal, X, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
 
 const allTags = ['pasión', 'romance', 'noche', 'encuentro', 'intimidad', 'amor', 'deseo', 'secreto', 'baile', 'verano', 'cartas', 'mar'];
@@ -32,6 +33,8 @@ interface RelatoRow {
   pais: string | null;
   categoria: string | null;
   imagen_url: string | null;
+  portada_url?: string | null;
+  cover_image_url?: string | null;
   vistas: number | null;
   likes: number | null;
   estado: string;
@@ -41,6 +44,7 @@ interface RelatoRow {
 }
 
 function mapToStory(r: RelatoRow): Story {
+  const imageUrl = getRelatoImageUrl(r);
   return {
     id: r.id,
     title: r.titulo ?? '',
@@ -49,7 +53,7 @@ function mapToStory(r: RelatoRow): Story {
     country: r.pais ?? '',
     excerpt: r.extracto ?? '',
     fullText: r.cuerpo ?? r.extracto ?? '',
-    coverImage: r.imagen_url ?? '',
+    coverImage: imageUrl,
     tags: r.tags ?? [],
     readingTime: r.tiempo_lectura ?? 5,
     views: r.vistas ?? 0,
@@ -81,7 +85,7 @@ export default function StoriesLibraryClient() {
       setLoadingStories(true);
       const { data, error } = await supabase
         .from('relatos')
-        .select('id, titulo, extracto, cuerpo, tags, pais, categoria, imagen_url, vistas, likes, estado, tiempo_lectura, created_at, autor_id')
+        .select('*')
         .in('estado', ['publicado', 'published'])
         .order('created_at', { ascending: false });
 
