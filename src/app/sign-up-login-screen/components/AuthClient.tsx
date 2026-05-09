@@ -80,7 +80,7 @@ export default function AuthClient() {
     }
 
     // Step 3: call signUp directly
-    const testEmail = `test-${Date.now()}@example.com`;
+    const testEmail = `sololatinas.test.${Date.now()}@gmail.com`;
     console.log('CALLING_SIGNUP', { email: testEmail });
     setDebugInfo((p) => `${p}\nCALLING_SIGNUP → ${testEmail}`);
 
@@ -115,7 +115,7 @@ export default function AuthClient() {
     console.log('RAW_FETCH_TEST starting...');
     setDebugInfo((p) => `${p}\nRAW_FETCH starting...`);
     try {
-      const rawEmail = `raw-${Date.now()}@example.com`;
+      const rawEmail = `sololatinas.raw.${Date.now()}@gmail.com`;
       const resp = await fetch(`${supabaseUrl}/auth/v1/signup`, {
         method: 'POST',
         headers: {
