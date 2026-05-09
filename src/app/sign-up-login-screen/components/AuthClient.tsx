@@ -57,23 +57,81 @@ export default function AuthClient() {
 
   // ── Direct test — completely bypasses the form ────────────────────────────────
   const handleDirectTest = async () => {
+    // Step 1: confirm click fires immediately
+    console.log('DIRECT_SIGNUP_TEST_CLICKED');
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'MISSING';
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+    const keyInfo = anonKey ? `present (len=${anonKey.length})` : 'MISSING';
+    const projectRef = supabaseUrl.replace('https://', '').split('.')[0];
+    const envDump = `URL=${supabaseUrl}\nREF=${projectRef}\nKEY=${keyInfo}`;
+    console.log('ENV_DUMP', { supabaseUrl, projectRef, keyInfo });
+    setDebugInfo(`CLICKED ✓\n${envDump}`);
+
+    // Step 2: try creating the client
+    let supabase: ReturnType<typeof createClient>;
+    try {
+      supabase = createClient();
+      console.log('CLIENT_CREATED ✓');
+      setDebugInfo((p) => `${p}\nCLIENT_CREATED ✓`);
+    } catch (err: any) {
+      console.error('CLIENT_CREATE_ERROR', err);
+      setDebugInfo((p) => `${p}\nCLIENT_ERROR: ${err?.message}`);
+      return;
+    }
+
+    // Step 3: call signUp directly
     const testEmail = `test-${Date.now()}@example.com`;
-    console.log('DIRECT_SIGNUP_TEST', { email: testEmail });
-    setDebugInfo(`DIRECT_TEST → ${testEmail}`);
-    const supabase = createClient();
-    const result = await supabase.auth.signUp({
-      email: testEmail,
-      password: 'Password123!',
-    });
-    console.log('DIRECT_SIGNUP_RESULT', {
+    console.log('CALLING_SIGNUP', { email: testEmail });
+    setDebugInfo((p) => `${p}\nCALLING_SIGNUP → ${testEmail}`);
+
+    let result: Awaited<ReturnType<typeof supabase.auth.signUp>>;
+    try {
+      result = await supabase.auth.signUp({ email: testEmail, password: 'Password123!' });
+    } catch (err: any) {
+      console.error('SIGNUP_THREW', err);
+      setDebugInfo((p) => `${p}\nSIGNUP_THREW: ${err?.message}`);
+      return;
+    }
+
+    console.log('SIGNUP_RESULT', {
       user_id: result.data?.user?.id,
-      error: result.error?.message,
-      status: result.error?.status,
+      session: !!result.data?.session,
+      error_message: result.error?.message,
+      error_status: result.error?.status,
+      error_name: (result.error as any)?.name,
     });
+
     if (result.error) {
-      setDebugInfo(`DIRECT_ERROR: ${result.error.message} (status: ${result.error.status})`);
+      setDebugInfo((p) =>
+        `${p}\nSIGNUP_ERROR:\n  msg=${result.error!.message}\n  status=${result.error!.status}\n  name=${(result.error as any)?.name}`
+      );
     } else {
-      setDebugInfo(`DIRECT_OK: user=${result.data?.user?.id ?? 'null'} session=${!!result.data?.session}`);
+      setDebugInfo((p) =>
+        `${p}\nSIGNUP_OK:\n  user=${result.data?.user?.id ?? 'null'}\n  session=${!!result.data?.session}`
+      );
+    }
+
+    // Step 4: raw fetch as fallback — bypasses the Supabase client entirely
+    console.log('RAW_FETCH_TEST starting...');
+    setDebugInfo((p) => `${p}\nRAW_FETCH starting...`);
+    try {
+      const rawEmail = `raw-${Date.now()}@example.com`;
+      const resp = await fetch(`${supabaseUrl}/auth/v1/signup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': anonKey,
+        },
+        body: JSON.stringify({ email: rawEmail, password: 'Password123!' }),
+      });
+      const body = await resp.json().catch(() => resp.text());
+      console.log('RAW_FETCH_RESULT', { status: resp.status, body });
+      setDebugInfo((p) =>
+        `${p}\nRAW_FETCH status=${resp.status}\nbody=${JSON.stringify(body).slice(0, 200)}`
+      );
+    } catch (err: any) {
+      console.error('RAW_FETCH_ERROR', err);
+      setDebugInfo((p) => `${p}\nRAW_FETCH_ERROR: ${err?.message}`);
     }
   };
 
