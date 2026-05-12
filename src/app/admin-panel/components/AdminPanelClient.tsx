@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import AppLogo from '@/components/ui/AppLogo';
 import { ViewsAreaChart, CountryBarChart } from './AdminStatsChart';
 import type { CountryChartEntry } from './AdminStatsChart';
@@ -9,8 +10,9 @@ import { createClient } from '@/lib/supabase/client';
 import { mapRelatoToStory } from '@/lib/supabase/mappers';
 import type { Story } from '@/lib/mockData';
 import type { SupabaseRelato, SupabaseProfile } from '@/lib/supabase/mappers';
+import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
-import { LayoutDashboard, BookOpen, Users, Star, Settings, Shield, ChevronRight, Search, Filter, CheckCircle, XCircle, Eye, Trash2, AlertTriangle, Clock, Menu, X, LogOut, RefreshCw, Image as ImageIcon, ChevronDown, BarChart2 } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Users, Star, Settings, Shield, ChevronRight, Search, Filter, CheckCircle, XCircle, Eye, Trash2, AlertTriangle, Clock, Menu, X, LogOut, RefreshCw, Image as ImageIcon, ChevronDown, BarChart2, Loader2 } from 'lucide-react';
 
 type AdminTab = 'dashboard' | 'moderation' | 'users' | 'featured' | 'settings';
 
@@ -39,6 +41,30 @@ const statusLabels: Record<string, string> = {
 };
 
 export default function AdminPanelClient() {
+  const router = useRouter();
+  const { user, signOut, loading: authLoading } = useAuth();
+  const [checkingAdmin, setCheckingAdmin] = useState(true);
+  const [adminAllowed, setAdminAllowed] = useState(false);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) { setCheckingAdmin(false); return; }
+    const supabase = createClient();
+    supabase
+      .from('admin_users')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .single()
+      .then(({ data }) => {
+        setAdminAllowed(!!data);
+        setCheckingAdmin(false);
+      });
+  }, [user, authLoading]);
+
+  const handleSignOut = async () => {
+    try { await signOut(); router.push('/'); } catch { /* ignore */ }
+  };
+
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -179,6 +205,29 @@ export default function AdminPanelClient() {
     toast.info('Generando imagen artística con IA... (integración pendiente con API de imágenes)');
   };
 
+  if (checkingAdmin) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 size={28} className="animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!adminAllowed) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="max-w-sm w-full text-center bg-surface border border-border rounded-2xl p-8">
+          <Shield size={40} className="text-muted-foreground/40 mx-auto mb-4" />
+          <h2 className="font-display text-xl font-bold text-foreground mb-2">Acceso restringido</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            No tienes permisos para acceder al panel de administración.
+          </p>
+          <Link href="/" className="btn-primary justify-center w-full">Volver al inicio</Link>
+        </div>
+      </div>
+    );
+  }
+
   const Sidebar = ({ mobile = false }: { mobile?: boolean }) => (
     <div className={`flex flex-col h-full ${mobile ? 'w-full' : sidebarOpen ? 'w-56' : 'w-16'} transition-all duration-300`}>
       {/* Logo */}
@@ -243,6 +292,7 @@ export default function AdminPanelClient() {
           {(sidebarOpen || mobile) && <span>Ver sitio</span>}
         </Link>
         <button
+          onClick={handleSignOut}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-all ${
             !sidebarOpen && !mobile ? 'justify-center' : ''
           }`}
@@ -693,7 +743,7 @@ export default function AdminPanelClient() {
                       const joinedDate = new Date(u.created_at).toLocaleDateString('es', {
                         day: '2-digit', month: '2-digit', year: 'numeric',
                       });
-                      const isAuthor = u.role === 'author' || u.role === 'autora' || u.role === 'admin';
+                      const isAuthor = u.role === 'author' || u.role === 'autora';
                       return (
                         <div key={`admin-user-${u.id}`} className="flex items-center gap-4 p-4 hover:bg-surface-elevated transition-colors">
                           <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
@@ -709,7 +759,6 @@ export default function AdminPanelClient() {
                           </div>
                           {u.country && <span className="text-xs text-muted-foreground hidden md:block">{u.country}</span>}
                           <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                            u.role === 'admin' ? 'bg-primary/15 text-primary border-primary/30' :
                             isAuthor ? 'bg-accent/15 text-accent border-accent/30' :
                             'bg-muted text-muted-foreground border-border'
                           }`}>{u.role ?? 'reader'}</span>
