@@ -5,22 +5,24 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppLogo from '@/components/ui/AppLogo';
 import { ViewsAreaChart, CountryBarChart } from './AdminStatsChart';
+import type { CountryChartEntry } from './AdminStatsChart';
 import { createClient } from '@/lib/supabase/client';
 import { mapRelatoToStory } from '@/lib/supabase/mappers';
-import type { Story } from '@/lib/mockData';
-import type { SupabaseRelato } from '@/lib/supabase/mappers';
+import type { SupabaseRelato, SupabaseProfile } from '@/lib/supabase/mappers';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
-import { LayoutDashboard, BookOpen, Users, Star, Settings, Shield, ChevronRight, Search, Filter, CheckCircle, XCircle, Eye, Trash2, TrendingUp, AlertTriangle, Clock, Menu, X, LogOut, RefreshCw, Image as ImageIcon, ChevronDown, BarChart2 } from 'lucide-react';
+import { LayoutDashboard, BookOpen, Users, Star, Settings, Shield, ChevronRight, Search, Filter, CheckCircle, XCircle, Eye, Trash2, AlertTriangle, Clock, Menu, X, LogOut, RefreshCw, Image as ImageIcon, ChevronDown, BarChart2 } from 'lucide-react';
+
+type AdminStory = ReturnType<typeof mapRelatoToStory>;
 
 type AdminTab = 'dashboard' | 'moderation' | 'users' | 'featured' | 'settings';
 
-const adminNavItems = [
-  { id: 'dashboard' as AdminTab, label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-  { id: 'moderation' as AdminTab, label: 'Moderación', icon: <Shield size={18} />, badge: 3 },
-  { id: 'users' as AdminTab, label: 'Usuarios', icon: <Users size={18} /> },
-  { id: 'featured' as AdminTab, label: 'Destacados', icon: <Star size={18} /> },
-  { id: 'settings' as AdminTab, label: 'Configuración', icon: <Settings size={18} /> },
+const adminNavItems: Array<{ id: AdminTab; label: string; icon: React.ReactNode }> = [
+  { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
+  { id: 'moderation', label: 'Moderación', icon: <Shield size={18} /> },
+  { id: 'users', label: 'Usuarios', icon: <Users size={18} /> },
+  { id: 'featured', label: 'Destacados', icon: <Star size={18} /> },
+  { id: 'settings', label: 'Configuración', icon: <Settings size={18} /> },
 ];
 
 const statusColors: Record<string, string> = {
@@ -50,8 +52,11 @@ export default function AdminPanelClient() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
-  const [stories, setStories] = useState<Story[]>([]);
+  const [stories, setStories] = useState<AdminStory[]>([]);
   const [loadingStories, setLoadingStories] = useState(true);
+  const [users, setUsers] = useState<SupabaseProfile[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState('');
   const [storyStatuses, setStoryStatuses] = useState<Record<string, string>>({});
   const [openStatusDropdown, setOpenStatusDropdown] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -76,6 +81,7 @@ export default function AdminPanelClient() {
   useEffect(() => {
     if (!adminAllowed) return;
     const supabase = createClient();
+
     async function fetchStories() {
       try {
         const { data } = await supabase
@@ -90,7 +96,26 @@ export default function AdminPanelClient() {
       } catch { /* show empty state */ }
       setLoadingStories(false);
     }
-    fetchStories();
+
+    async function fetchUsers() {
+      try {
+        const { data } = await supabase
+          .from('user_profiles')
+          .select('id, full_name, avatar_url, country, bio, role, created_at')
+          .order('created_at', { ascending: false });
+        if (data) setUsers(data as SupabaseProfile[]);
+      } catch { /* show empty state */ }
+      setLoadingUsers(false);
+    }
+
+    Promise.all([fetchStories(), fetchUsers()]).then(() => {
+      const now = new Date();
+      setLastUpdated(
+        now.toLocaleDateString('es', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+        ' ' +
+        now.toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })
+      );
+    });
   }, [adminAllowed]);
 
   if (authLoading || !adminChecked) {
@@ -128,7 +153,7 @@ export default function AdminPanelClient() {
   const totalViews = stories.reduce((sum, s) => sum + s.views, 0);
   const activeAuthors = [...new Set(stories.map((s) => s.authorId))].length;
   const featuredCount = Object.values(storyStatuses).filter((s) => s === 'destacado').length;
-  const conversionRate = 18.4;
+  const uniqueCountries = [...new Set(users.map((u) => u.country).filter(Boolean))].length;
 
   const filteredStories = stories.filter((s) =>
     s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -233,6 +258,7 @@ export default function AdminPanelClient() {
       <nav className="flex-1 py-4 px-2 space-y-0.5">
         {adminNavItems.map((item) => {
           const isActive = activeTab === item.id;
+          const badge = item.id === 'moderation' ? pendingModeration : 0;
           return (
             <button
               key={`admin-nav-${item.id}`}
@@ -248,12 +274,12 @@ export default function AdminPanelClient() {
             >
               {item.icon}
               {(sidebarOpen || mobile) && <span>{item.label}</span>}
-              {item.badge && (sidebarOpen || mobile) && (
+              {badge > 0 && (sidebarOpen || mobile) && (
                 <span className="ml-auto w-5 h-5 bg-amber-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                  {item.badge}
+                  {badge}
                 </span>
               )}
-              {item.badge && !sidebarOpen && !mobile && (
+              {badge > 0 && !sidebarOpen && !mobile && (
                 <span className="absolute top-1 right-1 w-2 h-2 bg-amber-500 rounded-full" />
               )}
             </button>
@@ -327,9 +353,11 @@ export default function AdminPanelClient() {
               <h1 className="text-sm font-semibold text-foreground">
                 {adminNavItems.find((n) => n.id === activeTab)?.label}
               </h1>
-              <p className="text-xs text-muted-foreground hidden sm:block">
-                Última actualización: 07/05/2026 15:27
-              </p>
+              {lastUpdated && (
+                <p className="text-xs text-muted-foreground hidden sm:block">
+                  Última actualización: {lastUpdated}
+                </p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -355,15 +383,14 @@ export default function AdminPanelClient() {
           {/* DASHBOARD TAB */}
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
-              {/* Stats Grid — 6 cards, 3-col + 3-col */}
-              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 2xl:grid-cols-6 gap-4">
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
                 {[
-                  { label: 'Total Relatos', value: totalStories, icon: <BookOpen size={18} />, color: 'text-primary', trend: '+8 este mes' },
-                  { label: 'En Revisión', value: pendingModeration, icon: <AlertTriangle size={18} />, color: 'text-amber-400', trend: 'Requieren atención', alert: true },
-                  { label: 'Vistas Totales', value: `${(totalViews / 1000).toFixed(0)}k`, icon: <Eye size={18} />, color: 'text-green-400', trend: '+12% vs semana anterior' },
-                  { label: 'Autoras Activas', value: activeAuthors, icon: <Users size={18} />, color: 'text-accent', trend: '+3 nuevas' },
-                  { label: 'Destacados', value: featuredCount, icon: <Star size={18} />, color: 'text-gold-light', trend: 'Activos en portada' },
-                  { label: 'Conversión', value: `${conversionRate}%`, icon: <TrendingUp size={18} />, color: 'text-primary', trend: '+2.1% vs ayer' },
+                  { label: 'Total Relatos', value: totalStories, icon: <BookOpen size={18} />, color: 'text-primary', trend: 'Todos los relatos' },
+                  { label: 'En Revisión', value: pendingModeration, icon: <AlertTriangle size={18} />, color: 'text-amber-400', trend: pendingModeration > 0 ? 'Requieren atención' : 'Sin pendientes', alert: pendingModeration > 0 },
+                  { label: 'Vistas Totales', value: totalViews > 0 ? `${(totalViews / 1000).toFixed(1)}k` : '0', icon: <Eye size={18} />, color: 'text-green-400', trend: 'Acumulado total' },
+                  { label: 'Autoras Activas', value: activeAuthors, icon: <Users size={18} />, color: 'text-accent', trend: 'Con al menos un relato' },
+                  { label: 'Destacados', value: featuredCount, icon: <Star size={18} />, color: 'text-gold-light', trend: 'En portada ahora' },
                 ].map((stat) => (
                   <div
                     key={`admin-stat-${stat.label}`}
@@ -683,12 +710,11 @@ export default function AdminPanelClient() {
           {/* USERS TAB */}
           {activeTab === 'users' && (
             <div className="space-y-5">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-2">
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-2">
                 {[
-                  { label: 'Total Usuarias', value: '2,847', trend: '+124 este mes' },
-                  { label: 'Suscriptoras Premium', value: '412', trend: '14.5% del total' },
-                  { label: 'Autoras Registradas', value: '38', trend: '+3 en espera' },
-                  { label: 'Activas Hoy', value: '318', trend: 'Pico: 22:00h' },
+                  { label: 'Total Usuarias', value: loadingUsers ? '…' : users.length.toString(), trend: 'Registradas en la plataforma' },
+                  { label: 'Autoras Activas', value: loadingUsers ? '…' : activeAuthors.toString(), trend: 'Con al menos un relato' },
+                  { label: 'Países', value: loadingUsers ? '…' : uniqueCountries.toString(), trend: 'Representados en la comunidad' },
                 ].map((s) => (
                   <div key={`user-stat-${s.label}`} className="bg-surface border border-border rounded-xl p-4">
                     <p className="font-display text-2xl font-bold text-primary tabular-nums">{s.value}</p>
@@ -703,33 +729,52 @@ export default function AdminPanelClient() {
                   <h3 className="text-sm font-semibold text-foreground">Usuarias Recientes</h3>
                 </div>
                 <div className="divide-y divide-border">
-                  {[
-                    { name: 'Catalina Mejía', email: 'catalina@gmail.com', role: 'Lectora', country: 'Colombia', joined: '06/05/2026', status: 'activa' },
-                    { name: 'Fernanda Ortiz', email: 'fernanda@hotmail.com', role: 'Autora', country: 'México', joined: '05/05/2026', status: 'activa' },
-                    { name: 'Paola Vega', email: 'paola.v@yahoo.com', role: 'Lectora', country: 'Argentina', joined: '04/05/2026', status: 'activa' },
-                    { name: 'Rossana Blanco', email: 'rossana@gmail.com', role: 'Premium', country: 'Chile', joined: '03/05/2026', status: 'activa' },
-                    { name: 'Mariela Torres', email: 'mariela.t@gmail.com', role: 'Lectora', country: 'Venezuela', joined: '02/05/2026', status: 'suspendida' },
-                    { name: 'Luciana Herrera', email: 'lu.herrera@gmail.com', role: 'Autora', country: 'Uruguay', joined: '01/05/2026', status: 'activa' },
-                  ].map((user) => (
-                    <div key={`admin-user-${user.email}`} className="flex items-center gap-4 p-4 hover:bg-surface-elevated transition-colors group">
-                      <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
-                        <span className="text-xs font-bold text-primary">{user.name.charAt(0)}</span>
+                  {loadingUsers ? (
+                    Array.from({ length: 4 }).map((_, i) => (
+                      <div key={`user-skel-${i}`} className="flex items-center gap-4 p-4">
+                        <div className="w-8 h-8 rounded-full bg-muted/40 animate-pulse flex-shrink-0" />
+                        <div className="flex-1 space-y-1.5">
+                          <div className="h-3 bg-muted/40 rounded animate-pulse w-32" />
+                          <div className="h-2.5 bg-muted/30 rounded animate-pulse w-48" />
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground">{user.name}</p>
-                        <p className="text-xs text-muted-foreground">{user.email}</p>
-                      </div>
-                      <span className="text-xs text-muted-foreground hidden md:block">{user.country}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                        user.role === 'Autora' ? 'bg-accent/15 text-accent border-accent/30' :
-                        user.role === 'Premium'? 'bg-primary/15 text-primary border-primary/30' : 'bg-muted text-muted-foreground border-border'
-                      }`}>{user.role}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                        user.status === 'activa' ?'bg-green-500/15 text-green-400 border-green-500/30' :'bg-red-500/15 text-red-400 border-red-500/30'
-                      }`}>{user.status}</span>
-                      <span className="text-xs text-muted-foreground hidden lg:block tabular-nums">{user.joined}</span>
+                    ))
+                  ) : users.length === 0 ? (
+                    <div className="p-8 text-center">
+                      <Users size={32} className="text-muted-foreground/30 mx-auto mb-3" />
+                      <p className="text-sm text-muted-foreground">No hay usuarias registradas aún</p>
                     </div>
-                  ))}
+                  ) : (
+                    users.map((u) => {
+                      const displayName = u.full_name ?? 'Usuaria';
+                      const joinedDate = new Date(u.created_at).toLocaleDateString('es', {
+                        day: '2-digit', month: '2-digit', year: 'numeric',
+                      });
+                      const isAuthor = u.role === 'author' || u.role === 'autora' || u.role === 'admin';
+                      return (
+                        <div key={`admin-user-${u.id}`} className="flex items-center gap-4 p-4 hover:bg-surface-elevated transition-colors">
+                          <div className="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                            {u.avatar_url ? (
+                              <img src={u.avatar_url} alt={displayName} className="w-8 h-8 rounded-full object-cover" />
+                            ) : (
+                              <span className="text-xs font-bold text-primary">{displayName.charAt(0).toUpperCase()}</span>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground">{displayName}</p>
+                            <p className="text-xs text-muted-foreground">{u.id.slice(0, 8)}…</p>
+                          </div>
+                          {u.country && <span className="text-xs text-muted-foreground hidden md:block">{u.country}</span>}
+                          <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                            u.role === 'admin' ? 'bg-primary/15 text-primary border-primary/30' :
+                            isAuthor ? 'bg-accent/15 text-accent border-accent/30' :
+                            'bg-muted text-muted-foreground border-border'
+                          }`}>{u.role ?? 'reader'}</span>
+                          <span className="text-xs text-muted-foreground hidden lg:block tabular-nums">{joinedDate}</span>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </div>
