@@ -42,23 +42,17 @@ const statusLabels: Record<string, string> = {
 
 export default function AdminPanelClient() {
   const router = useRouter();
-  const { user, signOut, loading: authLoading } = useAuth();
+  const { user, signOut, loading: authLoading, isAdmin } = useAuth();
   const [checkingAdmin, setCheckingAdmin] = useState(true);
   const [adminAllowed, setAdminAllowed] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
     if (!user) { setCheckingAdmin(false); return; }
-    const supabase = createClient();
-    supabase
-      .from('admin_users')
-      .select('email')
-      .eq('email', user.email)
-      .maybeSingle()
-      .then(({ data }) => {
-        setAdminAllowed(!!data);
-        setCheckingAdmin(false);
-      });
+    isAdmin().then((allowed: boolean) => {
+      setAdminAllowed(allowed);
+      setCheckingAdmin(false);
+    });
   }, [user, authLoading]);
 
   const handleSignOut = async () => {
