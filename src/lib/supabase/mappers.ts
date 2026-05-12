@@ -68,7 +68,7 @@ function normalizeTags(tags: SupabaseRelato['tags']) {
   return [];
 }
 
-function normalizeStatus(value: string | null | undefined, published?: boolean | null, featured?: boolean | null): StoryStatus {
+function normalizeStatusValue(value: string | null | undefined, featured?: boolean | null): StoryStatus {
   const raw = (value ?? '')
     .toString()
     .trim()
@@ -78,7 +78,7 @@ function normalizeStatus(value: string | null | undefined, published?: boolean |
     .replace(/[\s-]+/g, '_');
 
   if (featured || raw === 'destacado' || raw === 'featured') return STORY_STATUS.featured;
-  if (published || raw === 'published' || raw === 'publicado') return STORY_STATUS.published;
+  if (raw === 'published' || raw === 'publicado') return STORY_STATUS.published;
   if (raw === 'revision' || raw === 'en_revision' || raw === 'review' || raw === 'pending') {
     return STORY_STATUS.revision;
   }
@@ -86,8 +86,19 @@ function normalizeStatus(value: string | null | undefined, published?: boolean |
   return STORY_STATUS.draft;
 }
 
+export function normalizeRelatoStatus(r: Pick<SupabaseRelato, 'estado' | 'status' | 'published' | 'destacado'>): StoryStatus {
+  const estadoStatus = normalizeStatusValue(r.estado, r.destacado);
+  if (estadoStatus !== STORY_STATUS.draft) return estadoStatus;
+
+  const statusStatus = normalizeStatusValue(r.status, r.destacado);
+  if (statusStatus !== STORY_STATUS.draft) return statusStatus;
+
+  if (r.published) return STORY_STATUS.published;
+  return STORY_STATUS.draft;
+}
+
 export function mapRelatoToStory(r: SupabaseRelato): Story {
-  const status = normalizeStatus(r.status ?? r.estado, r.published, r.destacado);
+  const status = normalizeRelatoStatus(r);
   const title = firstText(r.title, r.titulo, r.slug, 'Relato sin titulo');
   const excerpt = firstText(r.excerpt, r.resumen, r.extracto, r.content, r.cuerpo);
   const content = firstText(r.content, r.cuerpo, excerpt);
@@ -113,9 +124,7 @@ export function mapRelatoToStory(r: SupabaseRelato): Story {
 }
 
 export function isPublishedRelato(r: SupabaseRelato) {
-  return PUBLIC_STORY_STATUSES.includes(
-    normalizeStatus(r.status ?? r.estado, r.published, r.destacado)
-  );
+  return Boolean(r.published) || PUBLIC_STORY_STATUSES.includes(normalizeRelatoStatus(r));
 }
 
 export function mapProfileToAuthor(p: SupabaseProfile): Author {

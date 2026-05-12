@@ -12,6 +12,15 @@ import {
   Sparkles, Eye, Save, Send, X, ChevronDown
 } from 'lucide-react';
 
+function slugify(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SUGGESTED_TAGS = [
@@ -145,23 +154,22 @@ export default function EscribirRelatoClient() {
 
   const uploadCoverImage = async (): Promise<string> => {
     if (!coverImage || !user) return '';
-    try {
-      const ext = coverImage.name.split('.').pop();
-      const path = `covers/${user.id}/${Date.now()}.${ext}`;
-      const { error } = await getSupabase().storage
-        .from('relatos-imagenes')
-        .upload(path, coverImage, { upsert: true });
-      if (error) {
-        console.log('Storage upload error:', error.message);
-        return '';
-      }
-      const { data: { publicUrl } } = getSupabase().storage
-        .from('relatos-imagenes')
-        .getPublicUrl(path);
-      return publicUrl;
-    } catch {
-      return '';
+
+    const body = new FormData();
+    body.append('file', coverImage);
+    body.append('userId', user.id);
+
+    const response = await fetch('/api/r2/upload', {
+      method: 'POST',
+      body,
+    });
+
+    if (!response.ok) {
+      throw new Error('No se pudo subir la imagen de portada a R2');
     }
+
+    const result = await response.json();
+    return result.publicUrl || '';
   };
 
   const calcReadingTime = (html: string): number => {
@@ -184,17 +192,29 @@ export default function EscribirRelatoClient() {
     setSaving(true);
     try {
       const imagenUrl = await uploadCoverImage();
+      const slug = slugify(form.titulo);
       const { error } = await getSupabase().from('relatos').insert({
+        title: form.titulo.trim(),
         titulo: form.titulo.trim(),
+        slug,
+        content: form.cuerpo,
         cuerpo: form.cuerpo,
+        excerpt: form.extracto.trim(),
+        resumen: form.extracto.trim(),
         extracto: form.extracto.trim(),
         tags: form.tags,
         pais: form.pais,
         categoria: form.categoria,
         autor_id: user.id,
+        author_id: user.id,
+        status: 'draft',
         estado: 'borrador',
+        published: false,
+        cover_image_url: imagenUrl,
+        portada_url: imagenUrl,
         imagen_url: imagenUrl,
         generar_imagen_ia: form.generarImagenIA,
+        lectura_minutos: calcReadingTime(form.cuerpo),
         tiempo_lectura: calcReadingTime(form.cuerpo),
       });
       if (error) { toast.error('Error al guardar: ' + error.message); return; }
@@ -214,19 +234,30 @@ export default function EscribirRelatoClient() {
     setPublishing(true);
     try {
       const imagenUrl = await uploadCoverImage();
+      const slug = slugify(form.titulo);
       const { error } = await getSupabase().from('relatos').insert({
+        title: form.titulo.trim(),
         titulo: form.titulo.trim(),
+        slug,
+        content: form.cuerpo,
         cuerpo: form.cuerpo,
+        excerpt: form.extracto.trim(),
+        resumen: form.extracto.trim(),
         extracto: form.extracto.trim(),
         tags: form.tags,
         pais: form.pais,
         categoria: form.categoria,
         autor_id: user.id,
+        author_id: user.id,
+        status: 'revision',
         estado: 'revision',
+        published: false,
+        cover_image_url: imagenUrl,
+        portada_url: imagenUrl,
         imagen_url: imagenUrl,
         generar_imagen_ia: form.generarImagenIA,
+        lectura_minutos: calcReadingTime(form.cuerpo),
         tiempo_lectura: calcReadingTime(form.cuerpo),
-        published_at: new Date().toISOString(),
       });
       if (error) { toast.error('Error al publicar: ' + error.message); return; }
       toast.success('¡Relato enviado a moderación! Te notificaremos cuando sea aprobado.');

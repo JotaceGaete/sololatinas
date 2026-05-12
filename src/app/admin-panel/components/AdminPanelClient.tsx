@@ -41,6 +41,22 @@ const statusLabels: Record<string, string> = {
   archivado: 'Archivado',
 };
 
+function buildStatusUpdate(status: string) {
+  if (status === 'publicado') {
+    return { estado: 'publicado', status: 'published', published: true, destacado: false };
+  }
+  if (status === 'destacado') {
+    return { estado: 'publicado', status: 'published', published: true, destacado: true };
+  }
+  if (status === 'revision') {
+    return { estado: 'revision', status: 'revision', published: false, destacado: false };
+  }
+  if (status === 'archivado') {
+    return { estado: 'archivado', status: 'archived', published: false, destacado: false };
+  }
+  return { estado: 'borrador', status: 'draft', published: false, destacado: false };
+}
+
 export default function AdminPanelClient() {
   const router = useRouter();
   const { user, loading: authLoading, isAdmin, signOut } = useAuth();
@@ -180,7 +196,7 @@ export default function AdminPanelClient() {
     const supabase = createClient();
     supabase
       .from('relatos')
-      .update({ estado: newStatus })
+      .update(buildStatusUpdate(newStatus))
       .eq('id', storyId)
       .then(({ error }) => {
         if (error) toast.error('Error al actualizar el estado');
@@ -222,7 +238,15 @@ export default function AdminPanelClient() {
     const newStatuses = { ...storyStatuses };
     selectedRows.forEach((id) => { newStatuses[id] = 'publicado'; });
     setStoryStatuses(newStatuses);
-    toast.success(`${selectedRows.length} relatos aprobados`);
+    const supabase = createClient();
+    supabase
+      .from('relatos')
+      .update(buildStatusUpdate('publicado'))
+      .in('id', selectedRows)
+      .then(({ error }) => {
+        if (error) toast.error('Error al aprobar relatos');
+        else toast.success(`${selectedRows.length} relatos aprobados`);
+      });
     setSelectedRows([]);
   };
 
