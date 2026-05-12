@@ -2,11 +2,13 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import AppLogo from '@/components/ui/AppLogo';
 import { useForm } from 'react-hook-form';
-import { Eye, EyeOff, BookOpen, Copy, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, BookOpen, Copy, Check, AlertCircle, Loader2, Mail } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 
 type AuthTab = 'login' | 'register';
 
@@ -36,12 +38,15 @@ const demoCredentials = [
 
 
 export default function AuthClient() {
+  const router = useRouter();
+  const { signIn, signUp } = useAuth();
   const [tab, setTab] = useState<AuthTab>('login');
   const [ageGate, setAgeGate] = useState<AgeGateState>('pending');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [emailConfirmPending, setEmailConfirmPending] = useState(false);
 
   const loginForm = useForm<LoginForm>({ defaultValues: { email: '', password: '', remember: false } });
   const registerForm = useForm<RegisterForm>();
@@ -64,22 +69,21 @@ export default function AuthClient() {
   };
 
   const onLoginSubmit = async (data: LoginForm) => {
-    const isValid = demoCredentials.some(
-      (c) => c.email === data.email && c.password === data.password
-    );
-
-    if (!isValid) {
-      loginForm.setError('root', {
-        message: 'Credenciales inválidas — usa las cuentas demo de abajo para iniciar sesión'
-      });
-      return;
-    }
-
     setIsLoading(true);
-    // BACKEND INTEGRATION: POST /api/auth/login with { email, password }
-    await new Promise((r) => setTimeout(r, 1400));
-    setIsLoading(false);
-    toast.success('¡Bienvenida de vuelta! 🌹');
+    try {
+      await signIn(data.email, data.password);
+      toast.success('¡Bienvenida de vuelta!');
+      router.push('/');
+    } catch (err: any) {
+      const msg = err?.message ?? 'Error al iniciar sesión';
+      loginForm.setError('root', {
+        message: msg.includes('Invalid login credentials')
+          ? 'Correo o contraseña incorrectos'
+          : msg
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const onRegisterSubmit = async (data: RegisterForm) => {
@@ -88,11 +92,46 @@ export default function AuthClient() {
       return;
     }
     setIsLoading(true);
-    // BACKEND INTEGRATION: POST /api/auth/register with user data + age verification
-    await new Promise((r) => setTimeout(r, 1600));
-    setIsLoading(false);
-    toast.success('¡Cuenta creada! Revisa tu email para confirmar. 💛');
+    try {
+      await signUp(data.email, data.password, { fullName: data.name });
+      setEmailConfirmPending(true);
+    } catch (err: any) {
+      const msg = err?.message ?? 'Error al crear la cuenta';
+      registerForm.setError('root', {
+        message: msg.includes('already registered')
+          ? 'Este correo ya está registrado. Intenta iniciar sesión.'
+          : msg
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  // Email confirmation pending screen
+  if (emailConfirmPending) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="max-w-md w-full text-center">
+          <div className="bg-surface-elevated border border-primary/20 rounded-2xl p-8">
+            <div className="w-16 h-16 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center mx-auto mb-5">
+              <Mail size={28} className="text-primary" />
+            </div>
+            <h2 className="font-display text-2xl font-bold text-foreground mb-3">
+              Revisa tu correo
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+              Te enviamos un enlace de confirmación. Haz clic en él para activar tu cuenta y comenzar a leer.
+            </p>
+            <button
+              onClick={() => { setEmailConfirmPending(false); setTab('login'); }}
+              className="btn-primary w-full justify-center py-3">
+              Volver al inicio de sesión
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Age Gate Screen
   if (ageGate === 'pending') {
@@ -356,6 +395,14 @@ export default function AuthClient() {
                   Miles de lectoras ya están disfrutando los relatos.
                 </p>
               </div>
+
+              {/* Root error */}
+              {registerForm.formState.errors.root &&
+              <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
+                  <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-400">{registerForm.formState.errors.root.message}</p>
+                </div>
+              }
 
               {/* Name */}
               <div>
