@@ -1,10 +1,10 @@
 -- ============================================================
 -- SoloLatinas: Admin RLS Policies
--- Grants full access on relatos and user_profiles to users
--- with role = 'admin' in user_profiles.
+-- Uses admin_users table (email-based) as source of truth.
 -- ============================================================
 
--- Helper function: check if the calling user is admin
+-- Helper function: returns true if the calling user's email is in admin_users.
+-- SECURITY DEFINER ensures it can read admin_users regardless of RLS on that table.
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN
 LANGUAGE sql
@@ -12,12 +12,23 @@ STABLE
 SECURITY DEFINER
 AS $$
   SELECT EXISTS (
-    SELECT 1 FROM public.user_profiles
-    WHERE id = auth.uid() AND role = 'admin'
+    SELECT 1 FROM public.admin_users
+    WHERE email = auth.email()
   );
 $$;
 
--- Admin can read ALL relatos (including drafts and archived)
+-- admin_users RLS: authenticated users may only read their own row.
+-- This lets the client-side isAdmin() query work without exposing other admin emails.
+ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "users_can_check_own_admin_status" ON public.admin_users;
+CREATE POLICY "users_can_check_own_admin_status"
+ON public.admin_users
+FOR SELECT
+TO authenticated
+USING (email = auth.email());
+
+-- Admin can read ALL relatos (including drafts/archived)
 DROP POLICY IF EXISTS "admin_can_read_all_relatos" ON public.relatos;
 CREATE POLICY "admin_can_read_all_relatos"
 ON public.relatos
@@ -25,7 +36,7 @@ FOR SELECT
 TO authenticated
 USING (public.is_admin());
 
--- Admin can update any relato (status changes, moderation)
+-- Admin can update any relato (moderation / status changes)
 DROP POLICY IF EXISTS "admin_can_update_any_relato" ON public.relatos;
 CREATE POLICY "admin_can_update_any_relato"
 ON public.relatos
@@ -39,13 +50,5 @@ DROP POLICY IF EXISTS "admin_can_delete_any_relato" ON public.relatos;
 CREATE POLICY "admin_can_delete_any_relato"
 ON public.relatos
 FOR DELETE
-TO authenticated
-USING (public.is_admin());
-
--- Admin can read all user profiles (already covered by public policy, but explicit)
-DROP POLICY IF EXISTS "admin_can_read_all_user_profiles" ON public.user_profiles;
-CREATE POLICY "admin_can_read_all_user_profiles"
-ON public.user_profiles
-FOR SELECT
 TO authenticated
 USING (public.is_admin());

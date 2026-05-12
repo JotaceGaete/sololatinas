@@ -104,10 +104,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   const isAdmin = async (): Promise<boolean> => {
-    if (!user) return false;
+    if (!user?.email) return false;
     try {
-      const profile = await getUserProfile();
-      return profile?.role === 'admin';
+      const supabase = getSupabase();
+      const { data } = await supabase
+        .from('admin_users')
+        .select('email')
+        .eq('email', user.email)
+        .maybeSingle();
+      return !!data;
     } catch {
       return false;
     }

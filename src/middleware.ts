@@ -32,13 +32,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL('/sign-up-login-screen', request.url));
   }
 
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
+  const { data: adminRecord } = await supabase
+    .from('admin_users')
+    .select('email')
+    .eq('email', user.email)
+    .maybeSingle();
 
-  if (profile?.role !== 'admin') {
+  if (!adminRecord) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 
