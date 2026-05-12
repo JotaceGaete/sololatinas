@@ -2,10 +2,11 @@
 
 import React from 'react';
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, BarChart, Bar, Cell
+  BarChart, Bar, Cell,
+  XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer
 } from 'recharts';
-import { storyViewsData } from '@/lib/mockData';
+import { BarChart2 } from 'lucide-react';
 
 interface CustomTooltipProps {
   active?: boolean;
@@ -29,35 +30,15 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 
 export function ViewsAreaChart() {
   return (
-    <div>
-      <ResponsiveContainer width="100%" height={220}>
-        <AreaChart data={storyViewsData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-          <defs>
-            <linearGradient id="adminViewsGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
-            </linearGradient>
-            <linearGradient id="adminLikesGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3} />
-              <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
-            </linearGradient>
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-          <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
-          <YAxis tick={{ fontSize: 10, fill: 'var(--muted-foreground)' }} />
-          <Tooltip content={<CustomTooltip />} />
-          <Area type="monotone" dataKey="views" name="Vistas" stroke="var(--primary)" fill="url(#adminViewsGrad)" strokeWidth={2} />
-          <Area type="monotone" dataKey="likes" name="Likes" stroke="var(--accent)" fill="url(#adminLikesGrad)" strokeWidth={2} />
-        </AreaChart>
-      </ResponsiveContainer>
-      <p className="text-[10px] text-muted-foreground/50 text-center mt-1">
-        Datos de ejemplo — próximamente analíticas en tiempo real
-      </p>
+    <div className="h-[220px] flex flex-col items-center justify-center gap-3">
+      <BarChart2 size={32} className="text-muted-foreground/25" />
+      <p className="text-sm text-muted-foreground">Analíticas en tiempo real</p>
+      <p className="text-xs text-muted-foreground/50">Disponible próximamente</p>
     </div>
   );
 }
 
-interface CountryChartEntry {
+export interface CountryChartEntry {
   country: string;
   count: number;
   color?: string;
