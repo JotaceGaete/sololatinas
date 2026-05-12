@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import StoryCard from '@/components/ui/StoryCard';
-import type { Story } from '@/lib/mockData';
+import type { Story } from '@/lib/stories/types';
 import { Sparkles, ChevronRight } from 'lucide-react';
 
 interface Props {

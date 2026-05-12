@@ -1,7 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import AppImage from '@/components/ui/AppImage';
-import type { Author } from '@/lib/mockData';
+import type { Author } from '@/lib/stories/types';
 import { Users, ChevronRight } from 'lucide-react';
 
 interface Props {

@@ -2,11 +2,13 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import StoryCard from '@/components/ui/StoryCard';
 import { createClient } from '@/lib/supabase/client';
 import { mapRelatoToStory } from '@/lib/supabase/mappers';
-import type { Story } from '@/lib/mockData';
+import type { Story } from '@/lib/stories/types';
+import { PUBLIC_STORY_STATUSES } from '@/lib/stories/types';
 import type { SupabaseRelato } from '@/lib/supabase/mappers';
 import { X, ChevronLeft, BookmarkPlus, Share2, Heart, Sun, Moon, Coffee, Type, Minus, Plus, Eye, BookOpen, AlignJustify, ArrowLeft, ArrowRight, Library, Sparkles, CheckCircle } from 'lucide-react';
 import StoryReactions from './StoryReactions';
@@ -104,27 +106,55 @@ function showToast(message: string) {
 }
 
 export default function ImmersiveReaderClient() {
+  const searchParams = useSearchParams();
+  const relatoId = searchParams.get('id');
   const [story, setStory] = useState<Story | null>(null);
   const [related, setRelated] = useState<Story[]>([]);
   const [loadingStory, setLoadingStory] = useState(true);
 
   useEffect(() => {
     const supabase = createClient();
-    supabase
-      .from('relatos')
-      .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
-      .in('estado', ['publicado', 'destacado'])
-      .order('published_at', { ascending: false })
-      .limit(5)
-      .then(({ data }) => {
-        if (data && data.length > 0) {
-          const stories = (data as SupabaseRelato[]).map(mapRelatoToStory);
-          setStory(stories[0]);
+
+    async function fetchStory() {
+      setLoadingStory(true);
+      try {
+        const baseSelect = '*, autor:user_profiles(full_name, avatar_url, country, bio)';
+        const relatedQuery = supabase
+          .from('relatos')
+          .select(baseSelect)
+          .in('estado', PUBLIC_STORY_STATUSES)
+          .order('published_at', { ascending: false })
+          .limit(5);
+
+        if (relatoId) {
+          const [{ data: selected }, { data: relatedData }] = await Promise.all([
+            supabase
+              .from('relatos')
+              .select(baseSelect)
+              .eq('id', relatoId)
+              .in('estado', PUBLIC_STORY_STATUSES)
+              .maybeSingle(),
+            relatedQuery.neq('id', relatoId),
+          ]);
+
+          setStory(selected ? mapRelatoToStory(selected as SupabaseRelato) : null);
+          setRelated(((relatedData ?? []) as SupabaseRelato[]).map(mapRelatoToStory));
+        } else {
+          const { data } = await relatedQuery;
+          const stories = ((data ?? []) as SupabaseRelato[]).map(mapRelatoToStory);
+          setStory(stories[0] ?? null);
           setRelated(stories.slice(1));
         }
+      } catch {
+        setStory(null);
+        setRelated([]);
+      } finally {
         setLoadingStory(false);
-      });
-  }, []);
+      }
+    }
+
+    fetchStory();
+  }, [relatoId]);
 
   const fullText = useMemo(() => story ? (story.fullText || story.excerpt) : '', [story]);
   const pages = useMemo(() => story ? splitIntoPages(fullText) : [''], [story, fullText]);

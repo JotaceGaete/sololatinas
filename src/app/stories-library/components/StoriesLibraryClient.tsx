@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import StoryCard from '@/components/ui/StoryCard';
-import type { Story } from '@/lib/mockData';
+import type { Story } from '@/lib/stories/types';
 import { Search, Filter, SlidersHorizontal, X, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
 
 const allTags = ['pasión', 'romance', 'noche', 'encuentro', 'intimidad', 'amor', 'deseo', 'secreto', 'baile', 'verano', 'cartas', 'mar'];

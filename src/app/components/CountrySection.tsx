@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import StoryCard from '@/components/ui/StoryCard';
-import type { Story } from '@/lib/mockData';
+import type { Story } from '@/lib/stories/types';
 import { MapPin } from 'lucide-react';
 
 const countries = ['Todos', 'Colombia', 'México', 'Argentina', 'España', 'Venezuela', 'Chile'];

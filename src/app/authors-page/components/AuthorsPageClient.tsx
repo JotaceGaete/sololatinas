@@ -5,7 +5,8 @@ import Link from 'next/link';
 import AppImage from '@/components/ui/AppImage';
 import StoryCard from '@/components/ui/StoryCard';
 import { createClient } from '@/lib/supabase/client';
-import type { Author, Story } from '@/lib/mockData';
+import type { Author, Story } from '@/lib/stories/types';
+import { PUBLIC_STORY_STATUSES } from '@/lib/stories/types';
 import type { SupabaseRelato, SupabaseProfile } from '@/lib/supabase/mappers';
 import { mapRelatoToStory, mapProfileToAuthor } from '@/lib/supabase/mappers';
 import { Users, MapPin, BookOpen, Heart, ChevronDown, ChevronUp, Star } from 'lucide-react';
@@ -154,7 +155,7 @@ export default function AuthorsPageClient() {
           supabase
             .from('relatos')
             .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
-            .in('estado', ['publicado', 'destacado'])
+            .in('estado', PUBLIC_STORY_STATUSES)
             .order('published_at', { ascending: false }),
         ]);
 

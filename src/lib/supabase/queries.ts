@@ -1,5 +1,6 @@
 import { createClient } from './server';
-import type { Story, Author } from '@/lib/mockData';
+import type { Author, Story } from '@/lib/stories/types';
+import { PUBLIC_STORY_STATUSES } from '@/lib/stories/types';
 import { mapRelatoToStory, mapProfileToAuthor } from './mappers';
 import type { SupabaseRelato, SupabaseProfile } from './mappers';
 
@@ -14,7 +15,7 @@ export async function getPublishedStories(): Promise<Story[]> {
     const { data, error } = await supabase
       .from('relatos')
       .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
-      .in('estado', ['publicado', 'destacado'])
+      .in('estado', PUBLIC_STORY_STATUSES)
       .order('published_at', { ascending: false });
     if (error || !data) return [];
     return (data as SupabaseRelato[]).map(mapRelatoToStory);
@@ -43,7 +44,7 @@ export async function getAuthors(): Promise<Author[]> {
           .from('relatos')
           .select('id', { count: 'exact', head: true })
           .eq('autor_id', p.id)
-          .in('estado', ['publicado', 'destacado']);
+          .in('estado', PUBLIC_STORY_STATUSES);
         return { ...p, story_count: count ?? 0 };
       })
     );

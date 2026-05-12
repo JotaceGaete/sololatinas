@@ -1,4 +1,4 @@
-import type { Story, Author } from '@/lib/mockData';
+import type { Author, Story, StoryStatus } from '@/lib/stories/types';
 
 // ─── Raw Supabase row types (safe to import from client components) ────────────
 
@@ -12,7 +12,7 @@ export interface SupabaseRelato {
   pais: string;
   categoria: string;
   autor_id: string;
-  estado: 'borrador' | 'revision' | 'publicado' | 'destacado' | 'archivado';
+  estado: StoryStatus;
   vistas: number;
   likes: number;
   tiempo_lectura: number;
