@@ -52,9 +52,9 @@ export default function AdminPanelClient() {
     const supabase = createClient();
     supabase
       .from('admin_users')
-      .select('user_id')
-      .eq('user_id', user.id)
-      .single()
+      .select('email')
+      .eq('email', user.email)
+      .maybeSingle()
       .then(({ data }) => {
         setAdminAllowed(!!data);
         setCheckingAdmin(false);
