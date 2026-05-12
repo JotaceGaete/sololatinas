@@ -6,9 +6,8 @@ import AppImage from '@/components/ui/AppImage';
 import StoryCard from '@/components/ui/StoryCard';
 import { createClient } from '@/lib/supabase/client';
 import type { Author, Story } from '@/lib/stories/types';
-import { PUBLIC_STORY_STATUSES } from '@/lib/stories/types';
 import type { SupabaseRelato, SupabaseProfile } from '@/lib/supabase/mappers';
-import { mapRelatoToStory, mapProfileToAuthor } from '@/lib/supabase/mappers';
+import { isPublishedRelato, mapRelatoToStory, mapProfileToAuthor } from '@/lib/supabase/mappers';
 import { Users, MapPin, BookOpen, Heart, ChevronDown, ChevronUp, Star } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -155,13 +154,12 @@ export default function AuthorsPageClient() {
           supabase
             .from('relatos')
             .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
-            .in('estado', PUBLIC_STORY_STATUSES)
             .order('published_at', { ascending: false }),
         ]);
 
         const profiles = (profilesResult.data ?? []) as SupabaseProfile[];
         const relatos = (storiesResult.data ?? []) as SupabaseRelato[];
-        const stories = relatos.map(mapRelatoToStory);
+        const stories = relatos.filter(isPublishedRelato).map(mapRelatoToStory);
 
         const withCounts = profiles.map((p) => ({
           ...p,

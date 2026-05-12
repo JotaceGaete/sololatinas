@@ -1,21 +1,32 @@
 import type { Author, Story, StoryStatus } from '@/lib/stories/types';
-
-// ─── Raw Supabase row types (safe to import from client components) ────────────
+import { PUBLIC_STORY_STATUSES, STORY_STATUS } from '@/lib/stories/types';
 
 export interface SupabaseRelato {
   id: string;
-  titulo: string;
-  extracto: string;
-  cuerpo: string | null;
-  tags: string[];
-  imagen_url: string | null;
-  pais: string;
-  categoria: string;
-  autor_id: string;
-  estado: StoryStatus;
-  vistas: number;
-  likes: number;
-  tiempo_lectura: number;
+  title?: string | null;
+  titulo?: string | null;
+  slug?: string | null;
+  excerpt?: string | null;
+  resumen?: string | null;
+  extracto?: string | null;
+  content?: string | null;
+  cuerpo?: string | null;
+  tags?: string[] | string | null;
+  cover_image_url?: string | null;
+  portada_url?: string | null;
+  imagen_url?: string | null;
+  pais?: string | null;
+  categoria?: string | null;
+  author_id?: string | null;
+  autor_id?: string | null;
+  status?: string | null;
+  estado?: string | null;
+  published?: boolean | null;
+  destacado?: boolean | null;
+  vistas?: number | null;
+  likes?: number | null;
+  lectura_minutos?: number | null;
+  tiempo_lectura?: number | null;
   published_at: string | null;
   created_at: string;
   updated_at: string;
@@ -38,27 +49,73 @@ export interface SupabaseProfile {
   story_count?: number;
 }
 
-// ─── Mappers ──────────────────────────────────────────────────────────────────
+function firstText(...values: Array<string | null | undefined>) {
+  return values.find((value) => typeof value === 'string' && value.trim().length > 0)?.trim() ?? '';
+}
+
+function firstNumber(...values: Array<number | null | undefined>) {
+  return values.find((value) => typeof value === 'number' && Number.isFinite(value)) ?? 0;
+}
+
+function normalizeTags(tags: SupabaseRelato['tags']) {
+  if (Array.isArray(tags)) return tags;
+  if (typeof tags === 'string') {
+    return tags
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function normalizeStatus(value: string | null | undefined, published?: boolean | null, featured?: boolean | null): StoryStatus {
+  const raw = (value ?? '')
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s-]+/g, '_');
+
+  if (featured || raw === 'destacado' || raw === 'featured') return STORY_STATUS.featured;
+  if (published || raw === 'published' || raw === 'publicado') return STORY_STATUS.published;
+  if (raw === 'revision' || raw === 'en_revision' || raw === 'review' || raw === 'pending') {
+    return STORY_STATUS.revision;
+  }
+  if (raw === 'archivado' || raw === 'archived') return STORY_STATUS.archived;
+  return STORY_STATUS.draft;
+}
 
 export function mapRelatoToStory(r: SupabaseRelato): Story {
+  const status = normalizeStatus(r.status ?? r.estado, r.published, r.destacado);
+  const title = firstText(r.title, r.titulo, r.slug, 'Relato sin titulo');
+  const excerpt = firstText(r.excerpt, r.resumen, r.extracto, r.content, r.cuerpo);
+  const content = firstText(r.content, r.cuerpo, excerpt);
+
   return {
     id: r.id,
-    title: r.titulo,
+    title,
     author: r.autor?.full_name ?? 'Autora',
-    authorId: r.autor_id,
-    country: r.pais,
-    excerpt: r.extracto,
-    fullText: r.cuerpo ?? undefined,
-    coverImage: r.imagen_url ?? '',
-    tags: r.tags ?? [],
-    readingTime: r.tiempo_lectura ?? 10,
-    views: r.vistas ?? 0,
-    likes: r.likes ?? 0,
+    authorId: firstText(r.autor_id, r.author_id),
+    country: firstText(r.pais),
+    excerpt,
+    fullText: content,
+    coverImage: firstText(r.cover_image_url, r.portada_url, r.imagen_url),
+    tags: normalizeTags(r.tags),
+    readingTime: firstNumber(r.lectura_minutos, r.tiempo_lectura) || 10,
+    views: firstNumber(r.vistas),
+    likes: firstNumber(r.likes),
     isPremium: false,
-    status: r.estado,
+    status,
     publishedAt: r.published_at ?? r.created_at,
-    genre: r.categoria ?? 'Romance',
+    genre: firstText(r.categoria, 'Romance'),
   };
+}
+
+export function isPublishedRelato(r: SupabaseRelato) {
+  return PUBLIC_STORY_STATUSES.includes(
+    normalizeStatus(r.status ?? r.estado, r.published, r.destacado)
+  );
 }
 
 export function mapProfileToAuthor(p: SupabaseProfile): Author {

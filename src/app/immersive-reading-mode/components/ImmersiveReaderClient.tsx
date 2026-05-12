@@ -6,9 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import StoryCard from '@/components/ui/StoryCard';
 import { createClient } from '@/lib/supabase/client';
-import { mapRelatoToStory } from '@/lib/supabase/mappers';
+import { isPublishedRelato, mapRelatoToStory } from '@/lib/supabase/mappers';
 import type { Story } from '@/lib/stories/types';
-import { PUBLIC_STORY_STATUSES } from '@/lib/stories/types';
 import type { SupabaseRelato } from '@/lib/supabase/mappers';
 import { X, ChevronLeft, BookmarkPlus, Share2, Heart, Sun, Moon, Coffee, Type, Minus, Plus, Eye, BookOpen, AlignJustify, ArrowLeft, ArrowRight, Library, Sparkles, CheckCircle } from 'lucide-react';
 import StoryReactions from './StoryReactions';
@@ -122,7 +121,6 @@ export default function ImmersiveReaderClient() {
         const relatedQuery = supabase
           .from('relatos')
           .select(baseSelect)
-          .in('estado', PUBLIC_STORY_STATUSES)
           .order('published_at', { ascending: false })
           .limit(5);
 
@@ -132,16 +130,16 @@ export default function ImmersiveReaderClient() {
               .from('relatos')
               .select(baseSelect)
               .eq('id', relatoId)
-              .in('estado', PUBLIC_STORY_STATUSES)
               .maybeSingle(),
             relatedQuery.neq('id', relatoId),
           ]);
 
-          setStory(selected ? mapRelatoToStory(selected as SupabaseRelato) : null);
-          setRelated(((relatedData ?? []) as SupabaseRelato[]).map(mapRelatoToStory));
+          const selectedRelato = selected as SupabaseRelato | null;
+          setStory(selectedRelato && isPublishedRelato(selectedRelato) ? mapRelatoToStory(selectedRelato) : null);
+          setRelated(((relatedData ?? []) as SupabaseRelato[]).filter(isPublishedRelato).map(mapRelatoToStory));
         } else {
           const { data } = await relatedQuery;
-          const stories = ((data ?? []) as SupabaseRelato[]).map(mapRelatoToStory);
+          const stories = ((data ?? []) as SupabaseRelato[]).filter(isPublishedRelato).map(mapRelatoToStory);
           setStory(stories[0] ?? null);
           setRelated(stories.slice(1));
         }
