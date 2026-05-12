@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import AppLogo from '@/components/ui/AppLogo';
 import { ViewsAreaChart, CountryBarChart } from './AdminStatsChart';
 import { createClient } from '@/lib/supabase/client';
@@ -9,6 +10,7 @@ import { mapRelatoToStory } from '@/lib/supabase/mappers';
 import type { Story } from '@/lib/mockData';
 import type { SupabaseRelato } from '@/lib/supabase/mappers';
 import { toast } from 'sonner';
+import { useAuth } from '@/contexts/AuthContext';
 import { LayoutDashboard, BookOpen, Users, Star, Settings, Shield, ChevronRight, Search, Filter, CheckCircle, XCircle, Eye, Trash2, TrendingUp, AlertTriangle, Clock, Menu, X, LogOut, RefreshCw, Image as ImageIcon, ChevronDown, BarChart2 } from 'lucide-react';
 
 type AdminTab = 'dashboard' | 'moderation' | 'users' | 'featured' | 'settings';
@@ -38,6 +40,11 @@ const statusLabels: Record<string, string> = {
 };
 
 export default function AdminPanelClient() {
+  const router = useRouter();
+  const { user, loading: authLoading, isAdmin, signOut } = useAuth();
+  const [adminChecked, setAdminChecked] = useState(false);
+  const [adminAllowed, setAdminAllowed] = useState(false);
+
   const [activeTab, setActiveTab] = useState<AdminTab>('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -50,6 +57,24 @@ export default function AdminPanelClient() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
   useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      router.replace('/sign-up-login-screen');
+      return;
+    }
+    isAdmin().then((allowed) => {
+      setAdminAllowed(allowed);
+      setAdminChecked(true);
+    });
+  }, [user, authLoading]);
+
+  const handleSignOut = async () => {
+    await signOut();
+    router.replace('/sign-up-login-screen');
+  };
+
+  useEffect(() => {
+    if (!adminAllowed) return;
     const supabase = createClient();
     async function fetchStories() {
       try {
@@ -66,7 +91,37 @@ export default function AdminPanelClient() {
       setLoadingStories(false);
     }
     fetchStories();
-  }, []);
+  }, [adminAllowed]);
+
+  if (authLoading || !adminChecked) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Verificando acceso...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!adminAllowed) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center px-4">
+        <div className="text-center max-w-sm">
+          <div className="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+            <Shield size={24} className="text-red-400" />
+          </div>
+          <h1 className="font-display text-xl font-bold text-foreground mb-2">Acceso denegado</h1>
+          <p className="text-sm text-muted-foreground mb-6">
+            No tienes permisos de administrador para acceder a este panel.
+          </p>
+          <Link href="/" className="btn-primary text-sm inline-flex">
+            Volver al inicio
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const totalStories = stories.length;
   const pendingModeration = stories.filter((s) => s.status === 'revision').length;
@@ -218,6 +273,7 @@ export default function AdminPanelClient() {
           {(sidebarOpen || mobile) && <span>Ver sitio</span>}
         </Link>
         <button
+          onClick={handleSignOut}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-red-400 hover:bg-red-500/10 transition-all ${
             !sidebarOpen && !mobile ? 'justify-center' : ''
           }`}

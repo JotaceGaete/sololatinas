@@ -103,6 +103,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return data;
   };
 
+  const isAdmin = async (): Promise<boolean> => {
+    if (!user) return false;
+    try {
+      const profile = await getUserProfile();
+      return profile?.role === 'admin';
+    } catch {
+      return false;
+    }
+  };
+
   const value = {
     user,
     session,
@@ -112,7 +122,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     signOut,
     getCurrentUser,
     isEmailVerified,
-    getUserProfile
+    getUserProfile,
+    isAdmin
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
