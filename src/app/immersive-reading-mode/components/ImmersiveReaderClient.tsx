@@ -1,10 +1,13 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import AppImage from '@/components/ui/AppImage';
 import StoryCard from '@/components/ui/StoryCard';
-import { mockStories } from '@/lib/mockData';
+import { createClient } from '@/lib/supabase/client';
+import { mapRelatoToStory } from '@/lib/supabase/mappers';
+import type { Story } from '@/lib/mockData';
+import type { SupabaseRelato } from '@/lib/supabase/mappers';
 import { X, ChevronLeft, BookmarkPlus, Share2, Heart, Sun, Moon, Coffee, Type, Minus, Plus, Eye, BookOpen, AlignJustify, ArrowLeft, ArrowRight, Library, Sparkles, CheckCircle } from 'lucide-react';
 import StoryReactions from './StoryReactions';
 import StoryComments from './StoryComments';
@@ -101,11 +104,30 @@ function showToast(message: string) {
 }
 
 export default function ImmersiveReaderClient() {
-  const story = mockStories[0];
-  const related = mockStories.filter((s) => s.id !== story.id).slice(0, 4);
+  const [story, setStory] = useState<Story | null>(null);
+  const [related, setRelated] = useState<Story[]>([]);
+  const [loadingStory, setLoadingStory] = useState(true);
 
-  const fullText = story.fullText || story.excerpt;
-  const pages = splitIntoPages(fullText);
+  useEffect(() => {
+    const supabase = createClient();
+    supabase
+      .from('relatos')
+      .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
+      .in('estado', ['publicado', 'destacado'])
+      .order('published_at', { ascending: false })
+      .limit(5)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          const stories = (data as SupabaseRelato[]).map(mapRelatoToStory);
+          setStory(stories[0]);
+          setRelated(stories.slice(1));
+        }
+        setLoadingStory(false);
+      });
+  }, []);
+
+  const fullText = useMemo(() => story ? (story.fullText || story.excerpt) : '', [story]);
+  const pages = useMemo(() => story ? splitIntoPages(fullText) : [''], [story, fullText]);
   const totalPages = pages.length;
 
   const [theme, setTheme] = useState<ReaderTheme>('dark');
@@ -115,13 +137,17 @@ export default function ImmersiveReaderClient() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
-  const [likeCount, setLikeCount] = useState(story.likes);
+  const [likeCount, setLikeCount] = useState(0);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [currentPage, setCurrentPage] = useState(1);
-  const [isSubscribed] = useState(true); // Full access for demo
+  const [isSubscribed] = useState(true);
   const [showEndScreen, setShowEndScreen] = useState(false);
   const [modePickerOpen, setModePickerOpen] = useState(false);
   const [showComments, setShowComments] = useState(false);
+
+  useEffect(() => {
+    if (story) setLikeCount(story.likes);
+  }, [story]);
 
   const contentRef = useRef<HTMLDivElement>(null);
   const pageTopRef = useRef<HTMLDivElement>(null);
@@ -203,6 +229,31 @@ export default function ImmersiveReaderClient() {
 
   const topBarText = theme === 'cream' ? 'text-[#2C1F0E]' : 'text-[#F5EFE6]';
   const topBarMuted = theme === 'cream' ? 'text-[#8B6914]' : 'text-[#9A8A7A]';
+
+  if (loadingStory) {
+    return (
+      <div className="min-h-screen bg-[#0D0B0A] flex items-center justify-center">
+        <p className="text-[#9A8A7A] text-sm animate-pulse">Cargando relato...</p>
+      </div>
+    );
+  }
+
+  if (!story) {
+    return (
+      <div className="min-h-screen bg-[#0D0B0A] flex flex-col items-center justify-center gap-6 px-4 text-center">
+        <BookOpen size={48} className="text-[#C9A96E]/40" />
+        <h2 className="font-display text-2xl font-bold text-[#F5EFE6]">
+          No hay relatos disponibles
+        </h2>
+        <p className="text-[#9A8A7A] max-w-sm">
+          Aún no se han publicado relatos. Vuelve pronto o comparte el primero.
+        </p>
+        <Link href="/stories-library" className="px-6 py-3 bg-[#C9A96E] text-[#0D0B0A] rounded-xl font-semibold text-sm hover:bg-[#E8C97A] transition-all">
+          Ver biblioteca
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className={`min-h-screen transition-colors duration-300 ${tc.bg}`}>

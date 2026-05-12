@@ -1,11 +1,17 @@
 import React from 'react';
 import Link from 'next/link';
 import StoryCard from '@/components/ui/StoryCard';
-import { mockStories } from '@/lib/mockData';
+import type { Story } from '@/lib/mockData';
 import { Sparkles, ChevronRight } from 'lucide-react';
 
-export default function NewStoriesSection() {
-  const newStories = [...mockStories]?.sort((a, b) => new Date(b.publishedAt)?.getTime() - new Date(a.publishedAt)?.getTime())?.slice(0, 4);
+interface Props {
+  stories: Story[];
+}
+
+export default function NewStoriesSection({ stories }: Props) {
+  const newStories = [...stories]
+    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime())
+    .slice(0, 4);
 
   return (
     <section className="py-16 bg-surface">
@@ -30,11 +36,17 @@ export default function NewStoriesSection() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4 gap-5">
-          {newStories?.map((story) => (
-            <StoryCard key={`new-${story?.id}`} story={story} />
-          ))}
-        </div>
+        {newStories.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4 gap-5">
+            {newStories.map((story) => (
+              <StoryCard key={`new-${story.id}`} story={story} />
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-16">
+            <p className="text-muted-foreground">Los relatos más recientes aparecerán aquí.</p>
+          </div>
+        )}
       </div>
     </section>
   );

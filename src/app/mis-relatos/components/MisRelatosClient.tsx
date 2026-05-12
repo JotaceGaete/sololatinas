@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
@@ -28,65 +28,6 @@ interface Relato {
   reaction_count?: number;
 }
 
-// ─── Mock data fallback ───────────────────────────────────────────────────────
-
-const MOCK_RELATOS: Relato[] = [
-{
-  id: 'mock-1',
-  titulo: 'La Noche del Jazmín',
-  extracto: 'Sus dedos rozaron los míos sobre el borde de la copa, y supe que esa noche cambiaría todo lo que creía saber sobre mí misma.',
-  tags: ['romance', 'colombia', 'noche'],
-  pais: 'Colombia',
-  categoria: 'Romance Literario',
-  imagen_url: "https://images.unsplash.com/photo-1604510674156-13963471486f",
-  vistas: 1240,
-  likes: 87,
-  estado: 'publicado',
-  created_at: '2026-04-10T14:30:00Z',
-  updated_at: '2026-04-12T09:00:00Z'
-},
-{
-  id: 'mock-2',
-  titulo: 'Cartas desde Cartagena',
-  extracto: 'Cada carta llegaba con olor a mar y a algo que no podía nombrar, pero que reconocía como el principio de algo irreversible.',
-  tags: ['cartas', 'mar', 'colombia'],
-  pais: 'Colombia',
-  categoria: 'Romance',
-  imagen_url: "https://img.rocket.new/generatedImages/rocket_gen_img_1f920fc83-1772468194753.png",
-  vistas: 430,
-  likes: 31,
-  estado: 'revision',
-  created_at: '2026-04-28T10:00:00Z',
-  updated_at: '2026-04-28T10:00:00Z'
-},
-{
-  id: 'mock-3',
-  titulo: 'El Tango de Medianoche',
-  extracto: 'Buenos Aires tiene la costumbre de enamorarte cuando menos lo esperas, generalmente a las tres de la mañana.',
-  tags: ['tango', 'argentina', 'baile'],
-  pais: 'Argentina',
-  categoria: 'Romance',
-  imagen_url: null,
-  vistas: 0,
-  likes: 0,
-  estado: 'borrador',
-  created_at: '2026-05-01T18:45:00Z',
-  updated_at: '2026-05-06T22:10:00Z'
-},
-{
-  id: 'mock-4',
-  titulo: 'Verano en Oaxaca',
-  extracto: 'El mercado olía a copal y a flores de cempasúchil, y él estaba ahí, como si siempre hubiera estado esperando.',
-  tags: ['mexico', 'verano', 'encuentro'],
-  pais: 'México',
-  categoria: 'Romance Literario',
-  imagen_url: "https://images.unsplash.com/photo-1710657148020-1a56176ff14c",
-  vistas: 0,
-  likes: 0,
-  estado: 'borrador',
-  created_at: '2026-05-05T11:00:00Z',
-  updated_at: '2026-05-05T11:00:00Z'
-}];
 
 
 // ─── Status config ────────────────────────────────────────────────────────────
@@ -308,7 +249,11 @@ function StatCard({ icon: Icon, label, value, color }: {icon: any;label: string;
 export default function MisRelatosClient() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const supabase = createClient();
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
+  const getSupabase = () => {
+    if (!supabaseRef.current) supabaseRef.current = createClient();
+    return supabaseRef.current;
+  };
 
   const [relatos, setRelatos] = useState<Relato[]>([]);
   const [loading, setLoading] = useState(true);
@@ -328,7 +273,7 @@ export default function MisRelatosClient() {
     setLoading(true);
     try {
       if (user) {
-        const { data, error } = await supabase
+        const { data, error } = await getSupabase()
           .from('relatos')
           .select('id, titulo, extracto, tags, pais, categoria, imagen_url, vistas, likes, estado, created_at, updated_at')
           .eq('autor_id', user.id)
@@ -337,12 +282,11 @@ export default function MisRelatosClient() {
         if (error) throw error;
         const relatosData = (data as Relato[]) ?? [];
 
-        // Fetch comment and reaction counts for each relato
         const enriched = await Promise.all(
           relatosData.map(async (r) => {
             const [commentResult, reactionResult] = await Promise.all([
-              supabase.from('story_comments').select('id', { count: 'exact', head: true }).eq('relato_id', r.id),
-              supabase.from('story_reactions').select('id', { count: 'exact', head: true }).eq('relato_id', r.id),
+              getSupabase().from('story_comments').select('id', { count: 'exact', head: true }).eq('relato_id', r.id),
+              getSupabase().from('story_reactions').select('id', { count: 'exact', head: true }).eq('relato_id', r.id),
             ]);
             return { ...r, comment_count: commentResult.count ?? 0, reaction_count: reactionResult.count ?? 0 };
           })
@@ -350,11 +294,10 @@ export default function MisRelatosClient() {
 
         setRelatos(enriched);
       } else {
-        // Show mock data for unauthenticated visitors
-        setRelatos(MOCK_RELATOS);
+        setRelatos([]);
       }
     } catch {
-      setRelatos(MOCK_RELATOS);
+      setRelatos([]);
     } finally {
       setLoading(false);
     }
@@ -369,13 +312,13 @@ export default function MisRelatosClient() {
     }
     try {
       if (user) {
-        await supabase.from('relatos').delete().eq('id', id).eq('autor_id', user.id);
+        await getSupabase().from('relatos').delete().eq('id', id).eq('autor_id', user.id);
       }
       setRelatos((prev) => prev.filter((r) => r.id !== id));
     } catch {
-
-      // silently fail on mock data
-    }setDeleteConfirm(null);
+      // no-op
+    }
+    setDeleteConfirm(null);
   }
 
   // ── Publish ────────────────────────────────────────────────────────────────
@@ -383,19 +326,19 @@ export default function MisRelatosClient() {
   async function handlePublish(id: string) {
     try {
       if (user) {
-        await supabase.
-        from('relatos').
-        update({ estado: 'revision' }).
-        eq('id', id).
-        eq('autor_id', user.id);
+        await getSupabase()
+          .from('relatos')
+          .update({ estado: 'revision' })
+          .eq('id', id)
+          .eq('autor_id', user.id);
       }
       setRelatos((prev) =>
-      prev.map((r) => r.id === id ? { ...r, estado: 'revision' as const } : r)
+        prev.map((r) => r.id === id ? { ...r, estado: 'revision' as const } : r)
       );
     } catch {
-
-      // silently fail on mock data
-    }}
+      // no-op
+    }
+  }
 
   // ── Derived data ───────────────────────────────────────────────────────────
 

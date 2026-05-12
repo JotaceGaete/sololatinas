@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import StoryCard from '@/components/ui/StoryCard';
-import { mockStories } from '@/lib/mockData';
+import type { Story } from '@/lib/mockData';
 import { MapPin } from 'lucide-react';
 
 const countries = ['Todos', 'Colombia', 'México', 'Argentina', 'España', 'Venezuela', 'Chile'];
@@ -17,12 +17,16 @@ const countryFlags: Record<string, string> = {
   Chile: '🇨🇱',
 };
 
-export default function CountrySection() {
+interface Props {
+  initialStories: Story[];
+}
+
+export default function CountrySection({ initialStories }: Props) {
   const [activeCountry, setActiveCountry] = useState('Todos');
 
   const filtered = activeCountry === 'Todos'
-    ? mockStories.slice(0, 6)
-    : mockStories.filter((s) => s.country === activeCountry).slice(0, 6);
+    ? initialStories.slice(0, 6)
+    : initialStories.filter((s) => s.country === activeCountry).slice(0, 6);
 
   return (
     <section className="py-20 max-w-screen-2xl mx-auto px-6 lg:px-10">

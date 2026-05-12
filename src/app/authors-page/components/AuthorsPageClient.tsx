@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import AppImage from '@/components/ui/AppImage';
 import StoryCard from '@/components/ui/StoryCard';
-import { mockAuthors, mockStories } from '@/lib/mockData';
-import type { Author } from '@/lib/mockData';
+import { createClient } from '@/lib/supabase/client';
+import type { Author, Story } from '@/lib/mockData';
+import type { SupabaseRelato, SupabaseProfile } from '@/lib/supabase/mappers';
+import { mapRelatoToStory, mapProfileToAuthor } from '@/lib/supabase/mappers';
 import { Users, MapPin, BookOpen, Heart, ChevronDown, ChevronUp, Star } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -15,10 +17,10 @@ const countryFlags: Record<string, string> = {
   España: '🇪🇸', Venezuela: '🇻🇪', Chile: '🇨🇱',
 };
 
-function AuthorCard({ author }: { author: Author }) {
+function AuthorCard({ author, allStories }: { author: Author; allStories: Story[] }) {
   const [expanded, setExpanded] = useState(false);
   const [following, setFollowing] = useState(false);
-  const authorStories = mockStories.filter((s) => s.authorId === author.id).slice(0, 3);
+  const authorStories = allStories.filter((s) => s.authorId === author.id).slice(0, 3);
 
   const handleFollow = () => {
     setFollowing((v) => !v);
@@ -74,9 +76,6 @@ function AuthorCard({ author }: { author: Author }) {
               <span className="flex items-center gap-1">
                 <BookOpen size={11} /> {author.storyCount} relatos
               </span>
-              <span className="flex items-center gap-1">
-                <Heart size={11} /> {author.followers >= 1000 ? `${(author.followers / 1000).toFixed(1)}k` : author.followers} seguidoras
-              </span>
             </div>
           </div>
         </div>
@@ -87,13 +86,15 @@ function AuthorCard({ author }: { author: Author }) {
         </p>
 
         {/* Tags */}
-        <div className="flex flex-wrap gap-1.5 mt-3">
-          {author.tags.map((tag) => (
-            <span key={`author-card-tag-${author.id}-${tag}`} className="tag-pill tag-pill-rose text-[10px]">
-              #{tag}
-            </span>
-          ))}
-        </div>
+        {author.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3">
+            {author.tags.map((tag) => (
+              <span key={`author-card-tag-${author.id}-${tag}`} className="tag-pill tag-pill-rose text-[10px]">
+                #{tag}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Expand Button */}
@@ -134,11 +135,74 @@ function AuthorCard({ author }: { author: Author }) {
 
 export default function AuthorsPageClient() {
   const [activeCountry, setActiveCountry] = useState('Todos');
-  const featuredAuthor = mockAuthors.find((a) => a.featured && a.storyCount > 20);
+  const [authors, setAuthors] = useState<Author[]>([]);
+  const [allStories, setAllStories] = useState<Story[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const supabase = createClient();
+    async function fetchData() {
+      try {
+        const [profilesResult, storiesResult] = await Promise.all([
+          supabase
+            .from('user_profiles')
+            .select('id, full_name, avatar_url, country, bio, role, created_at')
+            .eq('role', 'author')
+            .eq('is_active', true)
+            .order('created_at', { ascending: true })
+            .limit(20),
+          supabase
+            .from('relatos')
+            .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
+            .in('estado', ['publicado', 'destacado'])
+            .order('published_at', { ascending: false }),
+        ]);
+
+        const profiles = (profilesResult.data ?? []) as SupabaseProfile[];
+        const relatos = (storiesResult.data ?? []) as SupabaseRelato[];
+        const stories = relatos.map(mapRelatoToStory);
+
+        const withCounts = profiles.map((p) => ({
+          ...p,
+          story_count: stories.filter((s) => s.authorId === p.id).length,
+        }));
+
+        setAuthors(withCounts.map(mapProfileToAuthor));
+        setAllStories(stories);
+      } catch {
+        // no-op: show empty state
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
+  }, []);
+
+  const featuredAuthor = authors.length > 0
+    ? authors.reduce((max, a) => a.storyCount > max.storyCount ? a : max)
+    : null;
 
   const filtered = activeCountry === 'Todos'
-    ? mockAuthors
-    : mockAuthors.filter((a) => a.country === activeCountry);
+    ? authors
+    : authors.filter((a) => a.country === activeCountry);
+
+  if (loading) {
+    return (
+      <div className="pt-20 min-h-screen">
+        <div className="bg-surface border-b border-border px-6 lg:px-10 py-10 max-w-screen-2xl mx-auto">
+          <div className="h-8 bg-muted/30 rounded w-64 animate-pulse mb-3" />
+          <div className="h-12 bg-muted/30 rounded w-96 animate-pulse" />
+        </div>
+        <div className="max-w-screen-2xl mx-auto px-6 lg:px-10 py-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-64 rounded-xl bg-surface border border-border animate-pulse" />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pt-20 min-h-screen">
@@ -152,13 +216,15 @@ export default function AuthorsPageClient() {
           Las <span className="text-gradient-gold italic">voces</span> detrás de los relatos
         </h1>
         <p className="text-muted-foreground text-sm">
-          {mockAuthors.length} autoras de {[...new Set(mockAuthors.map((a) => a.country))].length} países escriben para ti
+          {authors.length > 0
+            ? `${authors.length} autora${authors.length !== 1 ? 's' : ''} de ${[...new Set(authors.map((a) => a.country))].filter(Boolean).length} países escriben para ti`
+            : 'La comunidad de autoras está creciendo'}
         </p>
       </div>
 
       <div className="max-w-screen-2xl mx-auto px-6 lg:px-10 py-10">
         {/* Featured Author Spotlight */}
-        {featuredAuthor && (
+        {featuredAuthor && featuredAuthor.storyCount > 0 && (
           <div className="relative rounded-2xl overflow-hidden border border-primary/20 bg-surface mb-12">
             <div className="absolute inset-0 bg-gradient-to-r from-primary/10 via-transparent to-accent/10 pointer-events-none" />
             <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-primary/40 to-transparent" />
@@ -167,7 +233,7 @@ export default function AuthorsPageClient() {
                 <div className="w-24 h-24 rounded-full overflow-hidden ring-4 ring-primary/30">
                   <AppImage
                     src={featuredAuthor.avatar}
-                    alt={`Foto destacada de ${featuredAuthor.name}, autora premiada de literatura romántica latina de ${featuredAuthor.country}`}
+                    alt={`Foto destacada de ${featuredAuthor.name}, autora de literatura romántica de ${featuredAuthor.country}`}
                     width={96}
                     height={96}
                     className="object-cover w-full h-full"
@@ -192,17 +258,6 @@ export default function AuthorsPageClient() {
                     <BookOpen size={14} className="text-primary" />
                     <strong className="text-foreground">{featuredAuthor.storyCount}</strong> relatos publicados
                   </span>
-                  <span className="flex items-center gap-1.5 text-muted-foreground">
-                    <Heart size={14} className="text-accent" />
-                    <strong className="text-foreground">{(featuredAuthor.followers / 1000).toFixed(1)}k</strong> seguidoras
-                  </span>
-                  <div className="flex flex-wrap gap-1">
-                    {featuredAuthor.tags.map((tag) => (
-                      <span key={`spotlight-tag-${featuredAuthor.id}-${tag}`} className="tag-pill text-[10px]">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
                 </div>
               </div>
 
@@ -248,17 +303,19 @@ export default function AuthorsPageClient() {
         {filtered.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-5">
             {filtered.map((author) => (
-              <AuthorCard key={`author-card-${author.id}`} author={author} />
+              <AuthorCard key={`author-card-${author.id}`} author={author} allStories={allStories} />
             ))}
           </div>
         ) : (
           <div className="text-center py-20 bg-surface border border-border rounded-xl">
             <MapPin size={40} className="text-muted-foreground mx-auto mb-4" />
             <h3 className="font-display text-xl text-foreground mb-2">
-              Próximamente autoras de {activeCountry}
+              {authors.length === 0 ? 'La comunidad está creciendo' : `Próximamente autoras de ${activeCountry}`}
             </h3>
             <p className="text-sm text-muted-foreground mb-4">
-              Estamos invitando escritoras de esta región. ¿Eres autora?
+              {authors.length === 0
+                ? '¡Sé parte de las primeras voces de SoloLatinas!'
+                : 'Estamos invitando escritoras de esta región. ¿Eres autora?'}
             </p>
             <Link href="/sign-up-login-screen" className="btn-primary inline-flex">
               Registrarme como autora

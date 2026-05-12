@@ -1,10 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import AppLogo from '@/components/ui/AppLogo';
 import { ViewsAreaChart, CountryBarChart } from './AdminStatsChart';
-import { mockStories, mockAuthors } from '@/lib/mockData';
+import { createClient } from '@/lib/supabase/client';
+import { mapRelatoToStory } from '@/lib/supabase/mappers';
+import type { Story } from '@/lib/mockData';
+import type { SupabaseRelato } from '@/lib/supabase/mappers';
 import { toast } from 'sonner';
 import { LayoutDashboard, BookOpen, Users, Star, Settings, Shield, ChevronRight, Search, Filter, CheckCircle, XCircle, Eye, Trash2, TrendingUp, AlertTriangle, Clock, Menu, X, LogOut, RefreshCw, Image as ImageIcon, ChevronDown, BarChart2 } from 'lucide-react';
 
@@ -40,20 +43,39 @@ export default function AdminPanelClient() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRows, setSelectedRows] = useState<string[]>([]);
-  const [storyStatuses, setStoryStatuses] = useState<Record<string, string>>(
-    Object.fromEntries(mockStories.map((s) => [s.id, s.status]))
-  );
+  const [stories, setStories] = useState<Story[]>([]);
+  const [loadingStories, setLoadingStories] = useState(true);
+  const [storyStatuses, setStoryStatuses] = useState<Record<string, string>>({});
   const [openStatusDropdown, setOpenStatusDropdown] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
-  const totalStories = mockStories.length;
-  const pendingModeration = mockStories.filter((s) => s.status === 'revision').length;
-  const totalViews = mockStories.reduce((sum, s) => sum + s.views, 0);
-  const activeAuthors = mockAuthors.length;
+  useEffect(() => {
+    const supabase = createClient();
+    async function fetchStories() {
+      try {
+        const { data } = await supabase
+          .from('relatos')
+          .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
+          .order('created_at', { ascending: false });
+        if (data) {
+          const mapped = (data as SupabaseRelato[]).map(mapRelatoToStory);
+          setStories(mapped);
+          setStoryStatuses(Object.fromEntries(mapped.map((s) => [s.id, s.status])));
+        }
+      } catch { /* show empty state */ }
+      setLoadingStories(false);
+    }
+    fetchStories();
+  }, []);
+
+  const totalStories = stories.length;
+  const pendingModeration = stories.filter((s) => s.status === 'revision').length;
+  const totalViews = stories.reduce((sum, s) => sum + s.views, 0);
+  const activeAuthors = [...new Set(stories.map((s) => s.authorId))].length;
   const featuredCount = Object.values(storyStatuses).filter((s) => s === 'destacado').length;
   const conversionRate = 18.4;
 
-  const filteredStories = mockStories.filter((s) =>
+  const filteredStories = stories.filter((s) =>
     s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
     s.author.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -75,7 +97,15 @@ export default function AdminPanelClient() {
   const handleStatusChange = (storyId: string, newStatus: string) => {
     setStoryStatuses((prev) => ({ ...prev, [storyId]: newStatus }));
     setOpenStatusDropdown(null);
-    toast.success(`Estado actualizado a "${statusLabels[newStatus]}"`);
+    const supabase = createClient();
+    supabase
+      .from('relatos')
+      .update({ estado: newStatus })
+      .eq('id', storyId)
+      .then(({ error }) => {
+        if (error) toast.error('Error al actualizar el estado');
+        else toast.success(`Estado actualizado a "${statusLabels[newStatus]}"`);
+      });
   };
 
   const handleApprove = (storyId: string) => {
@@ -92,7 +122,20 @@ export default function AdminPanelClient() {
 
   const handleDelete = (storyId: string) => {
     setConfirmDelete(null);
-    toast.success('Relato eliminado de la plataforma');
+    const supabase = createClient();
+    supabase
+      .from('relatos')
+      .delete()
+      .eq('id', storyId)
+      .then(({ error }) => {
+        if (error) {
+          toast.error('Error al eliminar el relato');
+        } else {
+          setStories((prev) => prev.filter((s) => s.id !== storyId));
+          setStoryStatuses((prev) => { const next = { ...prev }; delete next[storyId]; return next; });
+          toast.success('Relato eliminado de la plataforma');
+        }
+      });
   };
 
   const handleBulkApprove = () => {
@@ -283,22 +326,31 @@ export default function AdminPanelClient() {
               </div>
 
               {/* Charts Row */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-2 gap-5">
-                <div className="bg-surface border border-border rounded-xl p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-semibold text-foreground">Vistas y Likes — Últimos 30 días</h3>
-                    <BarChart2 size={16} className="text-muted-foreground" />
+              {(() => {
+                const countryMap = new Map<string, number>();
+                stories.forEach((s) => countryMap.set(s.country, (countryMap.get(s.country) ?? 0) + 1));
+                const countriesChartData = Array.from(countryMap.entries()).map(([country, count]) => ({
+                  country, count, color: 'var(--primary)',
+                }));
+                return (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-2 gap-5">
+                    <div className="bg-surface border border-border rounded-xl p-5">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-semibold text-foreground">Vistas y Likes — Últimos 30 días</h3>
+                        <BarChart2 size={16} className="text-muted-foreground" />
+                      </div>
+                      <ViewsAreaChart />
+                    </div>
+                    <div className="bg-surface border border-border rounded-xl p-5">
+                      <div className="flex items-center justify-between mb-4">
+                        <h3 className="text-sm font-semibold text-foreground">Relatos por País</h3>
+                        <BarChart2 size={16} className="text-muted-foreground" />
+                      </div>
+                      <CountryBarChart data={countriesChartData} />
+                    </div>
                   </div>
-                  <ViewsAreaChart />
-                </div>
-                <div className="bg-surface border border-border rounded-xl p-5">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-sm font-semibold text-foreground">Relatos por País</h3>
-                    <BarChart2 size={16} className="text-muted-foreground" />
-                  </div>
-                  <CountryBarChart />
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Pending Moderation Quick View */}
               <div className="bg-surface border border-amber-500/20 rounded-xl p-5">
@@ -315,35 +367,38 @@ export default function AdminPanelClient() {
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {mockStories.filter((s) => s.status === 'revision').slice(0, 3).map((story) => (
-                    <div
-                      key={`pending-quick-${story.id}`}
-                      className="flex items-center justify-between gap-3 p-3 bg-surface-elevated border border-border rounded-lg"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{story.title}</p>
-                        <p className="text-xs text-muted-foreground">{story.author} · {story.country}</p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <button
-                          onClick={() => handleApprove(story.id)}
-                          className="px-2.5 py-1 text-xs bg-green-500/15 text-green-400 border border-green-500/30 rounded-md hover:bg-green-500/25 transition-all"
-                        >
-                          Aprobar
-                        </button>
-                        <button
-                          onClick={() => handleReject(story.id)}
-                          className="px-2.5 py-1 text-xs bg-red-500/15 text-red-400 border border-red-500/30 rounded-md hover:bg-red-500/25 transition-all"
-                        >
-                          Rechazar
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                  {mockStories.filter((s) => s.status === 'revision').length === 0 && (
+                  {loadingStories ? (
+                    <div className="h-16 rounded-lg bg-muted/20 animate-pulse" />
+                  ) : stories.filter((s) => storyStatuses[s.id] === 'revision').length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-4">
                       ✓ No hay relatos pendientes de revisión
                     </p>
+                  ) : (
+                    stories.filter((s) => storyStatuses[s.id] === 'revision').slice(0, 3).map((story) => (
+                      <div
+                        key={`pending-quick-${story.id}`}
+                        className="flex items-center justify-between gap-3 p-3 bg-surface-elevated border border-border rounded-lg"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{story.title}</p>
+                          <p className="text-xs text-muted-foreground">{story.author} · {story.country}</p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            onClick={() => handleApprove(story.id)}
+                            className="px-2.5 py-1 text-xs bg-green-500/15 text-green-400 border border-green-500/30 rounded-md hover:bg-green-500/25 transition-all"
+                          >
+                            Aprobar
+                          </button>
+                          <button
+                            onClick={() => handleReject(story.id)}
+                            className="px-2.5 py-1 text-xs bg-red-500/15 text-red-400 border border-red-500/30 rounded-md hover:bg-red-500/25 transition-all"
+                          >
+                            Rechazar
+                          </button>
+                        </div>
+                      </div>
+                    ))
                   )}
                 </div>
               </div>
@@ -631,7 +686,7 @@ export default function AdminPanelClient() {
                 Gestiona qué relatos aparecen en la portada y secciones destacadas. Máximo 6 relatos destacados simultáneos.
               </p>
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3 gap-4">
-                {mockStories.map((story) => {
+                {stories.map((story) => {
                   const isFeatured = storyStatuses[story.id] === 'destacado';
                   return (
                     <div

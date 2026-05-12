@@ -2,7 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import StoryCard from '@/components/ui/StoryCard';
-import { mockStories } from '@/lib/mockData';
+import type { Story } from '@/lib/mockData';
 import { Search, Filter, SlidersHorizontal, X, ChevronLeft, ChevronRight, BookOpen } from 'lucide-react';
 
 const allTags = ['pasión', 'romance', 'noche', 'encuentro', 'intimidad', 'amor', 'deseo', 'secreto', 'baile', 'verano', 'cartas', 'mar'];
@@ -22,7 +22,11 @@ const sortOptions = [
 
 const ITEMS_PER_PAGE = 9;
 
-export default function StoriesLibraryClient() {
+interface Props {
+  initialStories: Story[];
+}
+
+export default function StoriesLibraryClient({ initialStories }: Props) {
   const [search, setSearch] = useState('');
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [selectedCountries, setSelectedCountries] = useState<string[]>([]);
@@ -65,7 +69,7 @@ export default function StoriesLibraryClient() {
   };
 
   const filtered = useMemo(() => {
-    let result = [...mockStories];
+    let result = [...initialStories];
 
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -109,7 +113,7 @@ export default function StoriesLibraryClient() {
     });
 
     return result;
-  }, [search, selectedTags, selectedCountries, selectedGenres, selectedLength, sortBy, showPremiumOnly]);
+  }, [initialStories, search, selectedTags, selectedCountries, selectedGenres, selectedLength, sortBy, showPremiumOnly]);
 
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -117,6 +121,8 @@ export default function StoriesLibraryClient() {
   const activeFilterCount =
     selectedTags.length + selectedCountries.length + selectedGenres.length +
     (selectedLength ? 1 : 0) + (showPremiumOnly ? 1 : 0);
+
+  const uniqueCountries = [...new Set(initialStories.map((s) => s.country))];
 
   const FilterPanel = () => (
     <div className="space-y-6">
@@ -278,7 +284,7 @@ export default function StoriesLibraryClient() {
           Todos los <span className="text-gradient-gold italic">Relatos</span>
         </h1>
         <p className="text-muted-foreground text-sm">
-          {mockStories.length} historias de {[...new Set(mockStories.map((s) => s.country))].length} países
+          {initialStories.length} historias de {uniqueCountries.length} países
         </p>
       </div>
 
@@ -373,7 +379,17 @@ export default function StoriesLibraryClient() {
             </p>
 
             {/* Story Grid */}
-            {paginated.length > 0 ? (
+            {initialStories.length === 0 ? (
+              <div className="text-center py-20 bg-surface border border-border rounded-xl">
+                <BookOpen size={40} className="text-muted-foreground mx-auto mb-4" />
+                <h3 className="font-display text-xl text-foreground mb-2">
+                  La biblioteca está vacía
+                </h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Aún no hay relatos publicados. ¡Sé la primera en compartir tu historia!
+                </p>
+              </div>
+            ) : paginated.length > 0 ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-3 gap-5 mb-8">
                 {paginated.map((story) => (
                   <StoryCard key={`library-story-${story.id}`} story={story} />

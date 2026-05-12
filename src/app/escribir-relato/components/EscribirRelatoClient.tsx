@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
@@ -53,7 +53,11 @@ interface FormData {
 export default function EscribirRelatoClient() {
   const router = useRouter();
   const { user } = useAuth();
-  const supabase = createClient();
+  const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
+  const getSupabase = () => {
+    if (!supabaseRef.current) supabaseRef.current = createClient();
+    return supabaseRef.current;
+  };
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<FormData>({
@@ -144,14 +148,14 @@ export default function EscribirRelatoClient() {
     try {
       const ext = coverImage.name.split('.').pop();
       const path = `covers/${user.id}/${Date.now()}.${ext}`;
-      const { error } = await supabase.storage
+      const { error } = await getSupabase().storage
         .from('relatos-imagenes')
         .upload(path, coverImage, { upsert: true });
       if (error) {
         console.log('Storage upload error:', error.message);
         return '';
       }
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = getSupabase().storage
         .from('relatos-imagenes')
         .getPublicUrl(path);
       return publicUrl;
@@ -180,7 +184,7 @@ export default function EscribirRelatoClient() {
     setSaving(true);
     try {
       const imagenUrl = await uploadCoverImage();
-      const { error } = await supabase.from('relatos').insert({
+      const { error } = await getSupabase().from('relatos').insert({
         titulo: form.titulo.trim(),
         cuerpo: form.cuerpo,
         extracto: form.extracto.trim(),
@@ -210,7 +214,7 @@ export default function EscribirRelatoClient() {
     setPublishing(true);
     try {
       const imagenUrl = await uploadCoverImage();
-      const { error } = await supabase.from('relatos').insert({
+      const { error } = await getSupabase().from('relatos').insert({
         titulo: form.titulo.trim(),
         cuerpo: form.cuerpo,
         extracto: form.extracto.trim(),
