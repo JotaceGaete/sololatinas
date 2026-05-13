@@ -53,20 +53,23 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [publishing, setPublishing] = useState(false);
   const autosaveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track unsaved changes to drive autosave backup
   const pendingRef = useRef<{ titulo: string; cuerpo: string } | null>(null);
+  // Always-current refs — never stale inside useCallback closures
+  const cuerpoRef = useRef(cuerpo);
+  const tituloRef = useRef(titulo);
   const supabase = createClient();
 
   useEffect(() => {
     setTitulo(capitulo.titulo);
     setCuerpo(capitulo.cuerpo);
+    cuerpoRef.current = capitulo.cuerpo;
+    tituloRef.current = capitulo.titulo;
     setEstado((capitulo as any).estado === 'publicado' ? 'publicado' : 'draft');
     setSaveStatus('idle');
     pendingRef.current = null;
     if (autosaveTimeout.current) clearTimeout(autosaveTimeout.current);
   }, [capitulo.id]);
 
-  // Autosave backup every 30s — never fires if there's nothing unsaved
   useEffect(() => {
     return () => {
       if (autosaveTimeout.current) clearTimeout(autosaveTimeout.current);
@@ -93,15 +96,19 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
   }, [capitulo, supabase, onUpdated]);
 
   const handleTituloChange = (val: string) => {
+    tituloRef.current = val;
     setTitulo(val);
     setSaveStatus('unsaved');
-    scheduleAutosave(val, cuerpo);
+    scheduleAutosave(val, cuerpoRef.current);
   };
 
   const handleCuerpoChange = (val: string) => {
+    // Update ref synchronously — ensures save operations always see the latest value
+    // even if they fire before the React re-render propagates the new state
+    cuerpoRef.current = val;
     setCuerpo(val);
     setSaveStatus('unsaved');
-    scheduleAutosave(titulo, val);
+    scheduleAutosave(tituloRef.current, val);
   };
 
   // ── Manual save ───────────────────────────────────────────────────────────────
@@ -109,9 +116,15 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
     if (autosaveTimeout.current) clearTimeout(autosaveTimeout.current);
     pendingRef.current = null;
     setSaveStatus('saving');
+
+    const currentTitulo = tituloRef.current.trim();
+    const currentCuerpo = cuerpoRef.current;
+    console.log('[save chapter] has ch-media-block:', currentCuerpo.includes('ch-media-block'));
+    console.log('[save chapter] cuerpo_html snippet:', currentCuerpo.slice(0, 300));
+
     const { error } = await supabase
       .from('historia_capitulos')
-      .update({ titulo: titulo.trim(), cuerpo_html: cuerpo, estado: 'draft' })
+      .update({ titulo: currentTitulo, cuerpo_html: currentCuerpo, estado: 'draft' })
       .eq('id', capitulo.id);
     if (error) {
       setSaveStatus('error');
@@ -120,14 +133,16 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
       setSaveStatus('saved');
       setEstado('draft');
       toast.success('Cambios guardados');
-      onUpdated({ ...capitulo, titulo: titulo.trim(), cuerpo, extracto: '' });
+      onUpdated({ ...capitulo, titulo: currentTitulo, cuerpo: currentCuerpo, extracto: '' });
     }
-  }, [titulo, cuerpo, capitulo, supabase, onUpdated]);
+  }, [capitulo, supabase, onUpdated]);
 
   // ── Publish ───────────────────────────────────────────────────────────────────
   const handlePublish = useCallback(async () => {
-    if (!titulo.trim()) { toast.error('El capítulo necesita un título'); return; }
-    if (wordCount(cuerpo) < 10) { toast.error('El capítulo necesita contenido'); return; }
+    const currentTitulo = tituloRef.current.trim();
+    const currentCuerpo = cuerpoRef.current;
+    if (!currentTitulo) { toast.error('El capítulo necesita un título'); return; }
+    if (wordCount(currentCuerpo) < 10) { toast.error('El capítulo necesita contenido'); return; }
 
     setPublishing(true);
     if (autosaveTimeout.current) clearTimeout(autosaveTimeout.current);
@@ -136,8 +151,8 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
     const { error } = await supabase
       .from('historia_capitulos')
       .update({
-        titulo: titulo.trim(),
-        cuerpo_html: cuerpo,
+        titulo: currentTitulo,
+        cuerpo_html: currentCuerpo,
         estado: 'publicado',
         published_at: new Date().toISOString(),
       })
@@ -150,9 +165,9 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
       setSaveStatus('saved');
       setEstado('publicado');
       toast.success('Capítulo publicado');
-      onUpdated({ ...capitulo, titulo: titulo.trim(), cuerpo, extracto: '' });
+      onUpdated({ ...capitulo, titulo: currentTitulo, cuerpo: currentCuerpo, extracto: '' });
     }
-  }, [titulo, cuerpo, capitulo, supabase, onUpdated]);
+  }, [capitulo, supabase, onUpdated]);
 
   // ── Unpublish ─────────────────────────────────────────────────────────────────
   const handleUnpublish = useCallback(async () => {
@@ -165,9 +180,9 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
     } else {
       setEstado('draft');
       toast.success('Capítulo movido a borrador');
-      onUpdated({ ...capitulo, titulo, cuerpo, extracto: '' });
+      onUpdated({ ...capitulo, titulo: tituloRef.current, cuerpo: cuerpoRef.current, extracto: '' });
     }
-  }, [titulo, cuerpo, capitulo, supabase, onUpdated]);
+  }, [capitulo, supabase, onUpdated]);
 
   // ── Delete ────────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
@@ -182,7 +197,6 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
   };
 
   const isPublished = estado === 'publicado';
-  const hasUnsaved = saveStatus === 'unsaved';
 
   return (
     <div className="flex flex-col gap-4">
@@ -225,7 +239,6 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
 
       {/* Bottom bar */}
       <div className="flex items-center justify-between flex-wrap gap-3 pt-3 border-t border-border">
-        {/* Meta */}
         <div className="flex items-center gap-4">
           <span className="flex items-center gap-1 text-xs text-muted-foreground">
             <BookOpen size={11} /> {readingMinutes(cuerpo)} min
@@ -235,9 +248,7 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
           </span>
         </div>
 
-        {/* Actions */}
         <div className="flex items-center gap-2">
-          {/* Delete */}
           <button
             onClick={handleDelete}
             className="p-1.5 text-muted-foreground hover:text-rose-400 hover:bg-rose-400/10 rounded-md transition-colors"
@@ -247,7 +258,6 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
           </button>
 
           {isPublished ? (
-            /* Unpublish */
             <button
               onClick={handleUnpublish}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border text-muted-foreground hover:text-foreground hover:border-border/80 rounded-lg transition-all"
@@ -256,7 +266,6 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
             </button>
           ) : (
             <>
-              {/* Save draft */}
               <button
                 onClick={handleSaveDraft}
                 disabled={saveStatus === 'saving'}
@@ -265,7 +274,6 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
                 <Save size={11} /> Guardar cambios
               </button>
 
-              {/* Publish */}
               <button
                 onClick={handlePublish}
                 disabled={publishing}

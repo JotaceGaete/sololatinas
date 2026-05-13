@@ -126,6 +126,11 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
       sel.addRange(newRange);
     }
 
+    // Verify block is in DOM before notifying
+    const hasBlock = editor.querySelector('[data-media-type]') !== null;
+    console.log('[ChapterRichEditor] insertMediaBlock: DOM has data-media-type:', hasBlock);
+    console.log('[ChapterRichEditor] innerHTML snippet:', editor.innerHTML.slice(0, 400));
+
     notify();
   }, [notify]);
 
@@ -282,6 +287,7 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
         {/* Narrative "Ver imagen" block */}
         <label
           title="Insertar botón narrativo: Ver imagen (el lector abre en modal)"
+          onMouseDown={() => captureRange()}
           className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors cursor-pointer ${uploadingImage ? 'opacity-50 pointer-events-none' : ''}`}
         >
           <ImageIcon size={12} /> Ver imagen
@@ -290,7 +296,6 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
             accept="image/*"
             className="hidden"
             onChange={(e) => {
-              captureRange();
               const f = e.target.files?.[0];
               if (f) handleMediaImageFile(f);
               e.target.value = '';
