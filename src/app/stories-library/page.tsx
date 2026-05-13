@@ -1,4 +1,7 @@
 import React from 'react';
+
+export const runtime = 'edge';
+
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import StoriesLibraryClient from './components/StoriesLibraryClient';
