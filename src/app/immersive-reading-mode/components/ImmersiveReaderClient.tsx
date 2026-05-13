@@ -117,18 +117,17 @@ export default function ImmersiveReaderClient() {
     async function fetchStory() {
       setLoadingStory(true);
       try {
-        const baseSelect = '*, autor:user_profiles(full_name, avatar_url, country, bio)';
         const relatedQuery = supabase
           .from('relatos')
-          .select(baseSelect)
-          .order('published_at', { ascending: false })
+          .select('*')
+          .order('created_at', { ascending: false })
           .limit(5);
 
         if (relatoId) {
           const [{ data: selected }, { data: relatedData }] = await Promise.all([
             supabase
               .from('relatos')
-              .select(baseSelect)
+              .select('*')
               .eq('id', relatoId)
               .maybeSingle(),
             relatedQuery.neq('id', relatoId),

@@ -10,10 +10,6 @@ interface Comment {
   contenido: string;
   created_at: string;
   autor_id: string | null;
-  user_profiles: {
-    full_name: string;
-    avatar_url: string | null;
-  } | null;
 }
 
 interface StoryCommentsProps {
@@ -63,7 +59,7 @@ export default function StoryComments({ relatoId, theme = 'dark' }: StoryComment
     try {
       const { data } = await supabase
         .from('story_comments')
-        .select('id, contenido, created_at, autor_id, user_profiles(full_name, avatar_url)')
+        .select('id, contenido, created_at, autor_id')
         .eq('relato_id', relatoId)
         .order('created_at', { ascending: true });
 
@@ -198,7 +194,7 @@ export default function StoryComments({ relatoId, theme = 'dark' }: StoryComment
       ) : (
         <div className="flex flex-col gap-4">
           {comments.map((comment) => {
-            const name = comment.user_profiles?.full_name || 'Lectora';
+            const name = 'Lectora';
             const isOwn = user?.id === comment.autor_id;
             return (
               <div key={comment.id} className={`flex gap-3 group`}>
