@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import { PenLine, BookOpen, Eye, Heart, Clock, Globe, Archive, MoreVertical, Edit3, Trash2, Send, FileText, Plus, ChevronDown, Search, MessageCircle } from 'lucide-react';
+import { PenLine, BookOpen, Eye, Heart, Clock, Globe, Archive, MoreVertical, Edit3, Trash2, Send, FileText, Plus, ChevronDown, Search, MessageCircle, Layers } from 'lucide-react';
+import CapitulosEditor from '@/components/chapters/CapitulosEditor';
 import Icon from '@/components/ui/AppIcon';
 
 
@@ -13,6 +14,7 @@ import Icon from '@/components/ui/AppIcon';
 
 interface Relato {
   id: string;
+  slug?: string | null;
   titulo: string;
   extracto: string;
   tags: string[];
@@ -80,18 +82,16 @@ function formatNumber(n: number) {
 function StoryRow({
   relato,
   onDelete,
-  onPublish
-
-
-
-
+  onPublish,
 }: {relato: Relato;onDelete: (id: string) => void;onPublish: (id: string) => void;}) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showCapitulos, setShowCapitulos] = useState(false);
   const cfg = STATUS_CONFIG[relato.estado];
   const StatusIcon = cfg.icon;
 
   return (
-    <div className="group relative flex flex-col sm:flex-row gap-4 p-5 rounded-xl border border-border bg-surface hover:border-primary/30 hover:bg-surface/80 transition-all duration-200">
+    <div className="group relative flex flex-col rounded-xl border border-border bg-surface hover:border-primary/30 hover:bg-surface/80 transition-all duration-200">
+    <div className="flex flex-col sm:flex-row gap-4 p-5">
       {/* Cover */}
       <div className="flex-shrink-0 w-full sm:w-20 h-28 sm:h-20 rounded-lg overflow-hidden bg-noir border border-border">
         {relato.imagen_url ?
@@ -224,6 +224,28 @@ function StoryRow({
           }
         </div>
       </div>
+    </div>
+
+      {/* Capítulos toggle button */}
+      <div className="border-t border-border px-5 py-2">
+        <button
+          onClick={() => setShowCapitulos((v) => !v)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+        >
+          <Layers size={12} />
+          {showCapitulos ? 'Ocultar capítulos' : 'Gestionar capítulos'}
+        </button>
+      </div>
+
+      {/* Capítulos editor (expanded) */}
+      {showCapitulos && (
+        <div className="border-t border-border px-5 py-4">
+          <CapitulosEditor
+            relatoId={relato.id}
+            relatoSlug={relato.slug ?? ''}
+          />
+        </div>
+      )}
     </div>);
 
 }
@@ -275,7 +297,7 @@ export default function MisRelatosClient() {
       if (user) {
         const { data, error } = await getSupabase()
           .from('relatos')
-          .select('id, titulo, extracto, tags, pais, categoria, imagen_url, vistas, likes, estado, created_at, updated_at')
+          .select('id, slug, titulo, extracto, tags, pais, categoria, imagen_url, vistas, likes, estado, created_at, updated_at')
           .eq('autor_id', user.id)
           .order('updated_at', { ascending: false });
 
