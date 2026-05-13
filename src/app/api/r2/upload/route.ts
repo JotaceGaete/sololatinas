@@ -1,15 +1,4 @@
-import { createHmac, createHash } from 'crypto';
 import { NextResponse } from 'next/server';
-
-export const runtime = 'nodejs';
-
-function sha256Hex(value: string | Uint8Array) {
-  return createHash('sha256').update(value).digest('hex');
-}
-
-function hmac(key: Buffer | Uint8Array | string, value: string) {
-  return createHmac('sha256', key).update(value).digest();
-}
 
 function encodePath(path: string) {
   return path
@@ -30,6 +19,32 @@ function extensionFrom(file: File) {
   if (file.type === 'image/png') return 'png';
   if (file.type === 'image/webp') return 'webp';
   return 'jpg';
+}
+
+async function sha256Hex(data: Uint8Array | string): Promise<string> {
+  const buffer = typeof data === 'string' ? new TextEncoder().encode(data) : data;
+  const hashBuffer = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function hmacSha256(key: ArrayBuffer | Uint8Array, message: string): Promise<ArrayBuffer> {
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    key,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  return crypto.subtle.sign('HMAC', cryptoKey, new TextEncoder().encode(message));
+}
+
+async function hmacHex(key: ArrayBuffer | Uint8Array, message: string): Promise<string> {
+  const result = await hmacSha256(key, message);
+  return Array.from(new Uint8Array(result))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 export async function POST(request: Request) {
@@ -62,14 +77,11 @@ export async function POST(request: Request) {
   const service = 's3';
   const key = `covers/${userId || 'anonymous'}/${Date.now()}.${extensionFrom(file)}`;
   const url = new URL(`${endpoint}/${bucket}/${encodePath(key)}`);
-  const payloadHash = sha256Hex(body);
+  const payloadHash = await sha256Hex(body);
   const host = url.host;
   const canonicalUri = url.pathname;
-  const canonicalHeaders = [
-    `host:${host}`,
-    `x-amz-content-sha256:${payloadHash}`,
-    `x-amz-date:${amzDate}`,
-  ].join('\n') + '\n';
+  const canonicalHeaders =
+    `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
   const signedHeaders = 'host;x-amz-content-sha256;x-amz-date';
   const canonicalRequest = [
     'PUT',
@@ -79,19 +91,22 @@ export async function POST(request: Request) {
     signedHeaders,
     payloadHash,
   ].join('\n');
+
   const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
   const stringToSign = [
     'AWS4-HMAC-SHA256',
     amzDate,
     credentialScope,
-    sha256Hex(canonicalRequest),
+    await sha256Hex(canonicalRequest),
   ].join('\n');
 
-  const signingKey = hmac(
-    hmac(hmac(hmac(`AWS4${secretAccessKey}`, dateStamp), region), service),
-    'aws4_request'
-  );
-  const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+  let signingKey: ArrayBuffer = new TextEncoder().encode(`AWS4${secretAccessKey}`);
+  signingKey = await hmacSha256(signingKey, dateStamp);
+  signingKey = await hmacSha256(signingKey, region);
+  signingKey = await hmacSha256(signingKey, service);
+  signingKey = await hmacSha256(signingKey, 'aws4_request');
+  const signature = await hmacHex(signingKey, stringToSign);
+
   const authorization = [
     `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}`,
     `SignedHeaders=${signedHeaders}`,

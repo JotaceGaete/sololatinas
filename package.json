@@ -24,7 +24,8 @@
       "postcss",
       "eslint",
       "prettier",
-      "@netlify/plugin-nextjs"
+      "@cloudflare/next-on-pages",
+      "wrangler"
     ],
     "scripts": [
       "dev",
@@ -46,7 +47,10 @@
     "lint:fix": "next lint --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css,md,json}\"",
     "serve": "next start",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "pages:build": "npx @cloudflare/next-on-pages",
+    "pages:dev": "wrangler pages dev",
+    "pages:deploy": "wrangler pages deploy"
   },
   "dependencies": {
     "@dhiwise/component-tagger": "^1.0.15",
@@ -68,8 +72,8 @@
     "typescript": "^5"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1",
     "@eslint/eslintrc": "^3",
-    "@netlify/plugin-nextjs": "^5.11.1",
     "@types/node": "^20",
     "@types/react": "19.0.3",
     "@types/react-dom": "19.0.3",
@@ -80,6 +84,7 @@
     "eslint-config-prettier": "^10.1.1",
     "eslint-plugin-prettier": "^5.2.6",
     "prettier": "^3.5.3",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "wrangler": "^3"
   }
 }
