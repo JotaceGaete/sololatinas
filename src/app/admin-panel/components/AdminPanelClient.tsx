@@ -7,7 +7,7 @@ import AppLogo from '@/components/ui/AppLogo';
 import { ViewsAreaChart, CountryBarChart } from './AdminStatsChart';
 import type { CountryChartEntry } from './AdminStatsChart';
 import { createClient } from '@/lib/supabase/client';
-import { mapRelatoToStory } from '@/lib/supabase/mappers';
+import { mapRelatoToStory, isPendingModerationRelato } from '@/lib/supabase/mappers';
 import type { SupabaseRelato, SupabaseProfile } from '@/lib/supabase/mappers';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
@@ -108,6 +108,14 @@ export default function AdminPanelClient() {
           console.error('[AdminPanel] fetchStories error:', error.message, error.details);
         }
         if (data) {
+          console.log('[AdminPanel] total relatos recibidos:', data.length);
+          if (data.length > 0) {
+            console.log('[AdminPanel] campos de estado (primeros 3):', (data as Record<string, unknown>[]).slice(0, 3).map((r) => ({
+              id: r['id'], status: r['status'], estado: r['estado'],
+              published: r['published'], is_published: r['is_published'],
+              destacado: r['destacado'], moderation_status: r['moderation_status'],
+            })));
+          }
           const mapped = (data as SupabaseRelato[]).map(mapRelatoToStory);
           setStories(mapped);
           setStoryStatuses(Object.fromEntries(mapped.map((s) => [s.id, s.status])));

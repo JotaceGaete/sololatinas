@@ -28,7 +28,17 @@ export async function getPublishedStories(): Promise<Story[]> {
       console.error('[getPublishedStories] query error:', error?.message, error?.details);
       return [];
     }
-    return (data as SupabaseRelato[]).filter(isPublishedRelato).map(mapRelatoToStory);
+    console.log('[getPublishedStories] total recibidos:', data.length);
+    if (data.length > 0) {
+      console.log('[getPublishedStories] campos de estado (primeros 3):', data.slice(0, 3).map((r: Record<string, unknown>) => ({
+        id: r['id'], status: r['status'], estado: r['estado'],
+        published: r['published'], is_published: r['is_published'],
+        destacado: r['destacado'], moderation_status: r['moderation_status'],
+      })));
+    }
+    const published = (data as SupabaseRelato[]).filter(isPublishedRelato);
+    console.log('[getPublishedStories] pasan isPublishedRelato:', published.length);
+    return published.map(mapRelatoToStory);
   } catch (e) {
     console.error('[getPublishedStories] unexpected error:', e);
     return [];

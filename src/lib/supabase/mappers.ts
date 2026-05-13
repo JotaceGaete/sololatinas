@@ -24,7 +24,9 @@ export interface SupabaseRelato {
   status?: string | null;
   estado?: string | null;
   published?: boolean | null;
+  is_published?: boolean | null;
   destacado?: boolean | null;
+  moderation_status?: string | null;
   vistas?: number | null;
   likes?: number | null;
   lectura_minutos?: number | null;
@@ -80,8 +82,8 @@ function normalizeStatusValue(value: string | null | undefined, featured?: boole
     .replace(/[\s-]+/g, '_');
 
   if (featured || raw === 'destacado' || raw === 'featured') return STORY_STATUS.featured;
-  if (raw === 'published' || raw === 'publicado') return STORY_STATUS.published;
-  if (raw === 'revision' || raw === 'en_revision' || raw === 'review' || raw === 'pending') {
+  if (raw === 'published' || raw === 'publicado' || raw === 'approved' || raw === 'aprobado') return STORY_STATUS.published;
+  if (raw === 'revision' || raw === 'en_revision' || raw === 'review' || raw === 'pending' || raw === 'pending_review' || raw === 'pendiente' || raw === 'moderation') {
     return STORY_STATUS.revision;
   }
   if (raw === 'archivado' || raw === 'archived') return STORY_STATUS.archived;
@@ -125,8 +127,26 @@ export function mapRelatoToStory(r: SupabaseRelato): Story {
   };
 }
 
-export function isPublishedRelato(r: SupabaseRelato) {
-  return Boolean(r.published) || PUBLIC_STORY_STATUSES.includes(normalizeRelatoStatus(r));
+export function getRelatoStatus(r: SupabaseRelato): string | null {
+  return r.status ?? r.estado ?? r.moderation_status ?? null;
+}
+
+export function isPublishedRelato(r: SupabaseRelato): boolean {
+  if (r.published === true || r.is_published === true) return true;
+  const s = (r.status ?? '').toLowerCase();
+  const e = (r.estado ?? '').toLowerCase();
+  if (s === 'published' || s === 'approved') return true;
+  if (e === 'publicado' || e === 'aprobado') return true;
+  return PUBLIC_STORY_STATUSES.includes(normalizeRelatoStatus(r));
+}
+
+export function isPendingModerationRelato(r: SupabaseRelato): boolean {
+  const s = (r.status ?? '').toLowerCase();
+  const e = (r.estado ?? '').toLowerCase();
+  const m = (r.moderation_status ?? '').toLowerCase();
+  return s === 'pending' || s === 'pending_review' || s === 'moderation'
+    || e === 'pendiente' || e === 'revision'
+    || m === 'pending';
 }
 
 export function mapProfileToAuthor(p: SupabaseProfile): Author {

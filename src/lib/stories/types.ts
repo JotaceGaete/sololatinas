@@ -10,6 +10,7 @@ export const STORY_STATUS = {
 
 export const PUBLIC_STORY_STATUSES: StoryStatus[] = [
   STORY_STATUS.published,
+  STORY_STATUS.featured,
 ];
 
 export interface Story {
