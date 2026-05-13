@@ -149,26 +149,30 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
         .ch-content figure { margin: 2rem 0; border-radius: 0.75rem; overflow: hidden; }
         .ch-content figure img { width: 100%; display: block; border-radius: 0.75rem; }
         .ch-content figcaption { font-size: 0.78rem; color: #9A8A7A; text-align: center; padding: 0.5rem 0.75rem; font-style: italic; }
-        .ch-media-block {
+        .ch-reveal-block, .ch-media-block {
           display: block;
           width: fit-content;
           margin: 1.75rem auto;
-          padding: 0.45rem 1.75rem;
+          padding: 0.5rem 2rem;
           border: 1px solid rgba(201,169,110,0.35);
           border-radius: 999px;
           color: #C9A96E;
           font-size: 0.78rem;
-          letter-spacing: 0.08em;
+          letter-spacing: 0.1em;
           text-align: center;
           cursor: pointer;
           user-select: none;
           background: rgba(201,169,110,0.04);
-          transition: background 0.15s, border-color 0.15s, transform 0.1s;
+          font-family: var(--font-display, serif);
+          transition: background 0.15s, border-color 0.15s, transform 0.12s;
         }
-        .ch-media-block:hover {
+        .ch-reveal-block:hover, .ch-media-block:hover {
           background: rgba(201,169,110,0.10);
-          border-color: rgba(201,169,110,0.6);
-          transform: scale(1.02);
+          border-color: rgba(201,169,110,0.55);
+          transform: scale(1.03);
+        }
+        .ch-reveal-block:active, .ch-media-block:active {
+          transform: scale(0.98);
         }
       `}</style>
 

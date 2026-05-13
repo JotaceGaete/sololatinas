@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useCallback, useEffect, useState } from 'react';
-import { Image as ImageIcon, Loader2, Play, X } from 'lucide-react';
+import { Eye, Image as ImageIcon, Loader2, Play, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -25,13 +25,23 @@ const HEADING_OPTIONS = [
   { label: 'Título 3', tag: 'h3' },
 ];
 
+const IMAGE_LABELS = ['Ver imagen', 'Ver ilustración', 'Ver escena', 'Ver retrato'];
+const VIDEO_LABELS = ['Ver video', 'Ver escena', 'Ver clip'];
+
 export default function ChapterRichEditor({ value, onChange, placeholder, userId, minHeight = 500 }: Props) {
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalUpdate = useRef(false);
   const savedRange = useRef<Range | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const [showVideoInput, setShowVideoInput] = useState(false);
+  const inlineFileRef = useRef<HTMLInputElement>(null);
+  const revealFileRef = useRef<HTMLInputElement>(null);
+  const [uploadingInline, setUploadingInline] = useState(false);
+  const [uploadingReveal, setUploadingReveal] = useState(false);
+  // Reveal image config bar
+  const [showRevealImage, setShowRevealImage] = useState(false);
+  const [revealImageLabel, setRevealImageLabel] = useState(IMAGE_LABELS[0]);
+  // Reveal video config bar
+  const [showRevealVideo, setShowRevealVideo] = useState(false);
+  const [revealVideoLabel, setRevealVideoLabel] = useState(VIDEO_LABELS[0]);
   const [videoUrl, setVideoUrl] = useState('');
 
   useEffect(() => {
@@ -68,26 +78,20 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
     editorRef.current.focus();
     if (savedRange.current) {
       const sel = window.getSelection();
-      if (sel) {
-        sel.removeAllRanges();
-        sel.addRange(savedRange.current);
-      }
+      if (sel) { sel.removeAllRanges(); sel.addRange(savedRange.current); }
     }
     document.execCommand('insertHTML', false, html);
     notify();
   }, [notify]);
 
-  // Direct DOM insertion for media blocks — avoids execCommand sanitizing data-* attributes
-  const insertMediaBlock = useCallback((type: 'image' | 'video', url: string) => {
+  // Direct DOM insertion — execCommand('insertHTML') strips data-* attributes
+  const insertRevealBlock = useCallback((type: 'image' | 'video', url: string, label: string) => {
     const editor = editorRef.current;
     if (!editor) return;
     editor.focus();
 
-    const label = type === 'image' ? '📷 Ver imagen' : '▶ Ver video';
-
-    // Build the block element directly so data-* attrs are never stripped
     const block = document.createElement('div');
-    block.className = 'ch-media-block';
+    block.className = 'ch-reveal-block';
     block.setAttribute('data-media-type', type);
     block.setAttribute('data-media-url', url);
     block.setAttribute('contenteditable', 'false');
@@ -96,17 +100,13 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
     const gap = document.createElement('p');
     gap.appendChild(document.createElement('br'));
 
-    // Find the nearest block-level ancestor inside the editor to insert after
+    // Insert after the block-level ancestor that contains the cursor
     const sel = window.getSelection();
     let anchorBlock: Element | null = null;
-
     if (savedRange.current || (sel && sel.rangeCount > 0)) {
       const range = savedRange.current ?? sel!.getRangeAt(0);
       let node: Node | null = range.commonAncestorContainer;
-      // Walk up until we find a direct child of the editor
-      while (node && node.parentNode !== editor) {
-        node = node.parentNode;
-      }
+      while (node && node.parentNode !== editor) node = node.parentNode;
       if (node && node !== editor) anchorBlock = node as Element;
     }
 
@@ -121,22 +121,16 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
     const newRange = document.createRange();
     newRange.setStart(gap, 0);
     newRange.collapse(true);
-    if (sel) {
-      sel.removeAllRanges();
-      sel.addRange(newRange);
-    }
+    if (sel) { sel.removeAllRanges(); sel.addRange(newRange); }
 
-    // Verify block is in DOM before notifying
-    const hasBlock = editor.querySelector('[data-media-type]') !== null;
-    console.log('[ChapterRichEditor] insertMediaBlock: DOM has data-media-type:', hasBlock);
-    console.log('[ChapterRichEditor] innerHTML snippet:', editor.innerHTML.slice(0, 400));
-
+    console.log('[ChapterRichEditor] insertRevealBlock: has data-media-type:', editor.querySelector('[data-media-type]') !== null);
     notify();
   }, [notify]);
 
-  const handleImageFile = useCallback(async (file: File) => {
+  // ── Inline image upload ────────────────────────────────────────────────────────
+  const handleInlineImageFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
-    setUploadingImage(true);
+    setUploadingInline(true);
     try {
       const body = new FormData();
       body.append('file', file);
@@ -151,13 +145,14 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
     } catch (err: any) {
       toast.error('Error al subir imagen: ' + (err?.message ?? 'Verifica la configuración de R2'));
     } finally {
-      setUploadingImage(false);
+      setUploadingInline(false);
     }
   }, [userId, insertHtmlAtSaved]);
 
-  const handleMediaImageFile = useCallback(async (file: File) => {
+  // ── Reveal image upload ────────────────────────────────────────────────────────
+  const handleRevealImageFile = useCallback(async (file: File, label: string) => {
     if (!file.type.startsWith('image/')) return;
-    setUploadingImage(true);
+    setUploadingReveal(true);
     try {
       const body = new FormData();
       body.append('file', file);
@@ -166,27 +161,30 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
       const res = await fetch('/api/r2/upload', { method: 'POST', body });
       if (!res.ok) throw new Error('Upload failed');
       const { publicUrl } = await res.json();
-      insertMediaBlock('image', publicUrl);
+      insertRevealBlock('image', publicUrl, label);
+      setShowRevealImage(false);
     } catch (err: any) {
       toast.error('Error al subir imagen: ' + (err?.message ?? 'Verifica la configuración de R2'));
     } finally {
-      setUploadingImage(false);
+      setUploadingReveal(false);
     }
-  }, [userId, insertMediaBlock]);
+  }, [userId, insertRevealBlock]);
 
   const handleInsertVideo = useCallback(() => {
     const url = videoUrl.trim();
     if (!url) return;
-    insertMediaBlock('video', url);
+    insertRevealBlock('video', url, revealVideoLabel);
     setVideoUrl('');
-    setShowVideoInput(false);
-  }, [videoUrl, insertMediaBlock]);
+    setShowRevealVideo(false);
+  }, [videoUrl, revealVideoLabel, insertRevealBlock]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (file) handleImageFile(file);
-  }, [handleImageFile]);
+    if (file) handleInlineImageFile(file);
+  }, [handleInlineImageFile]);
+
+  const closeAllBars = () => { setShowRevealImage(false); setShowRevealVideo(false); };
 
   const isEmpty = !value || value === '<br>' || value === '';
 
@@ -255,66 +253,59 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        {/* Inline image — renders directly in text */}
+        {/* ── Imagen visible (inline) ── */}
         <button
           type="button"
-          title="Insertar imagen en el texto"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            captureRange();
-            fileInputRef.current?.click();
-          }}
-          disabled={uploadingImage}
+          title="Imagen visible: aparece directamente en el texto"
+          onMouseDown={(e) => { e.preventDefault(); captureRange(); closeAllBars(); inlineFileRef.current?.click(); }}
+          disabled={uploadingInline || uploadingReveal}
           className="flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-muted-foreground bg-white/5 hover:bg-white/10 border border-border transition-colors disabled:opacity-50"
         >
-          {uploadingImage
+          {uploadingInline
             ? <><Loader2 size={12} className="animate-spin" /> Subiendo…</>
-            : <><ImageIcon size={12} /> Imagen</>
+            : <><ImageIcon size={12} /> Imagen visible</>
           }
         </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleImageFile(f);
-            e.target.value = '';
-          }}
-        />
+        <input ref={inlineFileRef} type="file" accept="image/*" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleInlineImageFile(f); e.target.value = ''; }} />
 
-        {/* Narrative "Ver imagen" block */}
-        <label
-          title="Insertar botón narrativo: Ver imagen (el lector abre en modal)"
-          onMouseDown={() => captureRange()}
-          className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors cursor-pointer ${uploadingImage ? 'opacity-50 pointer-events-none' : ''}`}
-        >
-          <ImageIcon size={12} /> Ver imagen
-          <input
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleMediaImageFile(f);
-              e.target.value = '';
-            }}
-          />
-        </label>
-
-        {/* Narrative "Ver video" block */}
+        {/* ── Revelar imagen ── */}
         <button
           type="button"
-          title="Insertar botón narrativo: Ver video (el lector abre en modal)"
+          title="Revelar imagen: el lector toca para ver la imagen en modal"
           onMouseDown={(e) => {
             e.preventDefault();
             captureRange();
-            setShowVideoInput((v) => !v);
+            setShowRevealVideo(false);
+            setShowRevealImage((v) => !v);
           }}
-          className="flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors"
+          disabled={uploadingInline || uploadingReveal}
+          className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium border transition-colors disabled:opacity-50 ${
+            showRevealImage
+              ? 'bg-primary/20 text-primary border-primary/40'
+              : 'text-primary bg-primary/10 hover:bg-primary/20 border-primary/20'
+          }`}
         >
-          <Play size={12} /> Ver video
+          <Eye size={12} /> Revelar imagen
+        </button>
+
+        {/* ── Revelar video ── */}
+        <button
+          type="button"
+          title="Revelar video: el lector toca para ver el video en modal"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            captureRange();
+            setShowRevealImage(false);
+            setShowRevealVideo((v) => !v);
+          }}
+          className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium border transition-colors ${
+            showRevealVideo
+              ? 'bg-primary/20 text-primary border-primary/40'
+              : 'text-primary bg-primary/10 hover:bg-primary/20 border-primary/20'
+          }`}
+        >
+          <Play size={12} /> Revelar video
         </button>
 
         <div className="w-px h-5 bg-border mx-1" />
@@ -327,17 +318,50 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
         </button>
       </div>
 
-      {/* Video URL input bar */}
-      {showVideoInput && (
+      {/* ── Revelar imagen config bar ── */}
+      {showRevealImage && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-primary/5">
+          <Eye size={12} className="text-primary flex-shrink-0" />
+          <span className="text-xs text-muted-foreground flex-shrink-0">Texto del botón:</span>
+          <select
+            value={revealImageLabel}
+            onChange={(e) => setRevealImageLabel(e.target.value)}
+            className="bg-surface border border-border text-foreground text-xs rounded-md px-2 py-1 focus:outline-none focus:border-primary/60"
+          >
+            {IMAGE_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
+          <label
+            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium bg-primary text-noir rounded-md cursor-pointer transition-all ${uploadingReveal ? 'opacity-50 pointer-events-none' : 'hover:bg-primary/90'}`}
+          >
+            {uploadingReveal ? <><Loader2 size={11} className="animate-spin" /> Subiendo…</> : 'Subir imagen'}
+            <input type="file" accept="image/*" className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRevealImageFile(f, revealImageLabel); e.target.value = ''; }} />
+          </label>
+          <button type="button" onClick={() => setShowRevealImage(false)}
+            className="p-1 text-muted-foreground hover:text-foreground transition-colors ml-auto">
+            <X size={12} />
+          </button>
+        </div>
+      )}
+
+      {/* ── Revelar video config bar ── */}
+      {showRevealVideo && (
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-primary/5">
           <Play size={12} className="text-primary flex-shrink-0" />
+          <select
+            value={revealVideoLabel}
+            onChange={(e) => setRevealVideoLabel(e.target.value)}
+            className="bg-surface border border-border text-foreground text-xs rounded-md px-2 py-1 focus:outline-none focus:border-primary/60 flex-shrink-0"
+          >
+            {VIDEO_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
+          </select>
           <input
             type="url"
             value={videoUrl}
             onChange={(e) => setVideoUrl(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') { e.preventDefault(); handleInsertVideo(); }
-              if (e.key === 'Escape') { setShowVideoInput(false); setVideoUrl(''); }
+              if (e.key === 'Escape') { setShowRevealVideo(false); setVideoUrl(''); }
             }}
             placeholder="Pega URL de YouTube, Vimeo o video directo…"
             className="flex-1 bg-transparent text-xs text-foreground placeholder-muted-foreground/50 outline-none"
@@ -351,7 +375,7 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
           >
             Insertar
           </button>
-          <button type="button" onClick={() => { setShowVideoInput(false); setVideoUrl(''); }}
+          <button type="button" onClick={() => { setShowRevealVideo(false); setVideoUrl(''); }}
             className="p-1 text-muted-foreground hover:text-foreground transition-colors">
             <X size={12} />
           </button>
@@ -400,21 +424,21 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
         .ch-figure img { width: 100%; display: block; }
         .ch-figcaption { font-size: 0.8rem; color: #9A8A7A; text-align: center; padding: 0.4rem 0.75rem; font-style: italic; min-height: 1.5rem; }
         .ch-figcaption:empty::before { content: attr(data-placeholder); opacity: 0.4; pointer-events: none; }
-        .ch-media-block {
+        .ch-reveal-block, .ch-media-block {
           display: block;
           width: fit-content;
           margin: 1.25rem auto;
-          padding: 0.5rem 1.5rem;
-          border: 1px solid rgba(201,169,110,0.4);
+          padding: 0.45rem 1.5rem;
+          border: 1px solid rgba(201,169,110,0.35);
           border-radius: 999px;
           color: #C9A96E;
-          font-size: 0.8rem;
-          font-family: var(--font-display, sans-serif);
-          letter-spacing: 0.06em;
+          font-size: 0.78rem;
+          letter-spacing: 0.07em;
           text-align: center;
-          cursor: pointer;
+          cursor: default;
           user-select: none;
-          background: rgba(201,169,110,0.06);
+          background: rgba(201,169,110,0.05);
+          font-family: var(--font-display, sans-serif);
         }
       `}</style>
     </div>
