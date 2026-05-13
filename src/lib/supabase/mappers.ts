@@ -101,6 +101,10 @@ export function normalizeRelatoStatus(r: Pick<SupabaseRelato, 'estado' | 'status
   return STORY_STATUS.draft;
 }
 
+export function getSafeStoryImage(url: string | null | undefined): string {
+  return url?.trim() || '/assets/images/no_image.png';
+}
+
 export function mapRelatoToStory(r: SupabaseRelato): Story {
   const status = normalizeRelatoStatus(r);
   const title = firstText(r.title, r.titulo, r.slug, 'Relato sin titulo');
@@ -115,7 +119,7 @@ export function mapRelatoToStory(r: SupabaseRelato): Story {
     country: firstText(r.pais),
     excerpt,
     fullText: content,
-    coverImage: firstText(r.cover_image_url, r.portada_url, r.imagen_url),
+    coverImage: getSafeStoryImage(firstText(r.cover_image_url, r.portada_url, r.imagen_url)),
     tags: normalizeTags(r.tags),
     readingTime: firstNumber(r.lectura_minutos, r.tiempo_lectura) || 10,
     views: firstNumber(r.vistas),
