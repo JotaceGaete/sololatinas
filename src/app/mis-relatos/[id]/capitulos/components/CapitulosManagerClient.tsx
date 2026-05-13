@@ -23,23 +23,39 @@ export default function CapitulosManagerClient({ story, initialCapitulos, userId
 
   const selected = capitulos.find((c) => c.id === selectedId) ?? null;
 
+  async function fetchLastNumero(): Promise<number> {
+    const { data } = await supabase
+      .from('historia_capitulos')
+      .select('numero')
+      .eq('historia_id', story.id)
+      .order('numero', { ascending: false })
+      .limit(1)
+      .single();
+    return (data as any)?.numero ?? 0;
+  }
+
   const handleCreate = useCallback(async () => {
     setCreating(true);
-    const nextNumero = capitulos.length > 0 ? Math.max(...capitulos.map((c) => c.numero)) + 1 : 1;
-    const { data, error } = await supabase
-      .from('historia_capitulos')
-      .insert({
-        historia_id: story.id,
-        numero: nextNumero,
-        titulo: '',
-        cuerpo_html: '',
-        estado: 'draft',
-      })
-      .select()
-      .single();
+
+    const tryInsert = async (numero: number) =>
+      supabase
+        .from('historia_capitulos')
+        .insert({ historia_id: story.id, numero, titulo: '', cuerpo_html: '', estado: 'draft' })
+        .select()
+        .single();
+
+    let numero = (await fetchLastNumero()) + 1;
+    let { data, error } = await tryInsert(numero);
+
+    // 409 = unique violation on (historia_id, numero) — refetch and retry once
+    if (error?.code === '23505') {
+      numero = (await fetchLastNumero()) + 1;
+      ({ data, error } = await tryInsert(numero));
+    }
+
     setCreating(false);
     if (error || !data) {
-      toast.error('Error al crear capítulo');
+      toast.error('Error al crear capítulo' + (error ? ': ' + error.message : ''));
       return;
     }
     const newCap: Capitulo = {
@@ -55,7 +71,7 @@ export default function CapitulosManagerClient({ story, initialCapitulos, userId
     };
     setCapitulos((prev) => [...prev, newCap]);
     setSelectedId(newCap.id);
-  }, [capitulos, story.id, supabase]);
+  }, [story.id, supabase]);
 
   const handleUpdated = useCallback((updated: Capitulo) => {
     setCapitulos((prev) => prev.map((c) => (c.id === updated.id ? { ...c, ...updated } : c)));
