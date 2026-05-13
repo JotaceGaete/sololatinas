@@ -65,8 +65,10 @@ export function splitIntoPages(
     return pages.length > 0 ? pages : [''];
   }
 
-  // HTML path: split by block-level closing tags
-  const chunks = content.match(/<p[^>]*>[\s\S]*?<\/p>|<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>|<blockquote[^>]*>[\s\S]*?<\/blockquote>|<br\s*\/?>/gi) ?? [];
+  // HTML path: split by block-level elements, including figure/ul/ol/hr so they are never dropped
+  const chunks = content.match(
+    /<figure[\s\S]*?<\/figure>|<ul[^>]*>[\s\S]*?<\/ul>|<ol[^>]*>[\s\S]*?<\/ol>|<p[^>]*>[\s\S]*?<\/p>|<h[1-6][^>]*>[\s\S]*?<\/h[1-6]>|<blockquote[^>]*>[\s\S]*?<\/blockquote>|<hr\s*\/?>|<br\s*\/?>/gi
+  ) ?? [];
   if (chunks.length === 0) return [content];
 
   const pages: string[] = [];
@@ -74,7 +76,9 @@ export function splitIntoPages(
   let currentCount = 0;
 
   for (const chunk of chunks) {
-    const wc = stripTags(chunk).split(/\s+/).filter(Boolean).length;
+    // Non-text blocks (figure, hr, br) don't count toward word budget
+    const isNonText = /^<(figure|hr|br)/i.test(chunk.trim());
+    const wc = isNonText ? 0 : stripTags(chunk).split(/\s+/).filter(Boolean).length;
     if (currentCount > 0 && currentCount + wc > maxWords) {
       pages.push(currentChunks.join(''));
       currentChunks = [chunk];

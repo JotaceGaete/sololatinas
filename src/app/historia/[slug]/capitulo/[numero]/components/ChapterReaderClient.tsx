@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import AppImage from '@/components/ui/AppImage';
 import type { Capitulo, CapituloMediaBlock, Story } from '@/lib/stories/types';
 import { renderStoryHtml, splitIntoPages } from '@/lib/stories/render';
-import { ArrowLeft, ArrowRight, BookOpen, ChevronLeft, ChevronRight, List } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BookOpen, ChevronLeft, ChevronRight, List, X } from 'lucide-react';
 
 const WORDS_TARGET = 1500;
 const WORDS_MIN = 1200;
@@ -60,6 +60,23 @@ function MediaBlock({ block }: { block: CapituloMediaBlock }) {
 export default function ChapterReaderClient({ story, capitulo, allCapitulos }: Props) {
   const [currentPage, setCurrentPage] = useState(1);
   const [indexOpen, setIndexOpen] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Attach click listeners to inline <img> inside ch-content after each render
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const imgs = el.querySelectorAll<HTMLImageElement>('img');
+    const handlers: Array<() => void> = [];
+    imgs.forEach((img) => {
+      const handler = () => setLightboxSrc(img.src);
+      img.addEventListener('click', handler);
+      img.style.cursor = 'zoom-in';
+      handlers.push(() => img.removeEventListener('click', handler));
+    });
+    return () => handlers.forEach((h) => h());
+  }, [currentPage]);
 
   const pages = useMemo(
     () => splitIntoPages(capitulo.cuerpo, WORDS_TARGET, WORDS_MIN, WORDS_MAX),
@@ -83,6 +100,12 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
         .ch-content strong { font-weight: 700; }
         .ch-content em { font-style: italic; }
         .ch-content hr { border: none; border-top: 1px solid rgba(201,169,110,0.3); margin: 2rem 0; }
+        .ch-content ul { list-style: disc; padding-left: 1.75rem; margin: 0.75rem 0 1.75rem; }
+        .ch-content ol { list-style: decimal; padding-left: 1.75rem; margin: 0.75rem 0 1.75rem; }
+        .ch-content li { margin: 0.35rem 0; }
+        .ch-content figure { margin: 2rem 0; border-radius: 0.75rem; overflow: hidden; }
+        .ch-content figure img { width: 100%; display: block; border-radius: 0.75rem; }
+        .ch-content figcaption { font-size: 0.78rem; color: #9A8A7A; text-align: center; padding: 0.5rem 0.75rem; font-style: italic; }
       `}</style>
 
       {/* Top bar */}
@@ -164,6 +187,7 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
           </p>
         )}
         <div
+          ref={contentRef}
           className="ch-content font-display text-[#F5EFE6] leading-[1.95] text-lg"
           dangerouslySetInnerHTML={{ __html: pages[currentPage - 1] ?? '' }}
         />
@@ -240,6 +264,28 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
           </div>
         )}
       </main>
+
+      {/* Lightbox for inline images */}
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors"
+            onClick={() => setLightboxSrc(null)}
+          >
+            <X size={24} />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxSrc}
+            alt=""
+            className="max-w-full max-h-full object-contain rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
     </div>
   );
 }
