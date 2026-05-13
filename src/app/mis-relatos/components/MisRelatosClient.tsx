@@ -175,7 +175,7 @@ function StoryRow({
       {/* Actions */}
       <div className="flex sm:flex-col items-center gap-2 sm:justify-start">
         <Link
-          href={`/escribir-relato?edit=${relato.id}`}
+          href={`/mis-relatos/${relato.id}/editar`}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 transition-all">
           
           <Edit3 size={12} />

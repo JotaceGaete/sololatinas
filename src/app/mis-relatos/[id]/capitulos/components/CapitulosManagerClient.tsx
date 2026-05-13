@@ -120,6 +120,63 @@ export default function CapitulosManagerClient({ story, initialCapitulos, userId
     });
   }, [capitulos, supabase]);
 
+  const handleDuplicate = useCallback(async (id: string) => {
+    const cap = capitulos.find((c) => c.id === id);
+    if (!cap) return;
+    const numero = (await fetchLastNumero()) + 1;
+    const { data, error } = await supabase
+      .from('historia_capitulos')
+      .insert({
+        historia_id: story.id,
+        numero,
+        titulo: `${cap.titulo || `Capítulo ${cap.numero}`} (copia)`,
+        cuerpo_html: cap.cuerpo,
+        estado: 'draft',
+      })
+      .select()
+      .single();
+    if (error || !data) { toast.error('Error al duplicar: ' + (error?.message ?? '')); return; }
+    const newCap: Capitulo = {
+      id: data.id,
+      relatoId: story.id,
+      numero: data.numero,
+      titulo: data.titulo || '',
+      cuerpo: data.cuerpo_html || '',
+      extracto: '',
+      publishedAt: null,
+      createdAt: data.created_at,
+      mediaBlocks: [],
+    };
+    setCapitulos((prev) => [...prev, newCap]);
+    setSelectedId(newCap.id);
+    toast.success('Capítulo duplicado');
+  }, [capitulos, story.id, supabase]);
+
+  const handleDelete = useCallback(async (id: string) => {
+    const { error } = await supabase.from('historia_capitulos').delete().eq('id', id);
+    if (error) { toast.error('Error al eliminar: ' + error.message); return; }
+    handleDeleted(id);
+    toast.success('Capítulo eliminado');
+  }, [handleDeleted, supabase]);
+
+  const handleTogglePublish = useCallback(async (id: string) => {
+    const cap = capitulos.find((c) => c.id === id);
+    if (!cap) return;
+    const isPublished = (cap as any).estado === 'publicado';
+    const updates = isPublished
+      ? { estado: 'draft', published_at: null }
+      : { estado: 'publicado', published_at: new Date().toISOString() };
+    const { error } = await supabase.from('historia_capitulos').update(updates).eq('id', id);
+    if (error) { toast.error('Error: ' + error.message); return; }
+    setCapitulos((prev) =>
+      prev.map((c) => c.id === id
+        ? { ...c, ...(updates as any), publishedAt: (updates as any).published_at }
+        : c
+      )
+    );
+    toast.success(isPublished ? 'Capítulo despublicado' : 'Capítulo publicado');
+  }, [capitulos, supabase]);
+
   return (
     <div className="flex h-screen bg-background overflow-hidden">
       {/* Sidebar — desktop: always visible, mobile: drawer */}
@@ -139,6 +196,9 @@ export default function CapitulosManagerClient({ story, initialCapitulos, userId
           onCreate={handleCreate}
           onMoveUp={handleMoveUp}
           onMoveDown={handleMoveDown}
+          onDuplicate={handleDuplicate}
+          onDelete={handleDelete}
+          onTogglePublish={handleTogglePublish}
           creating={creating}
         />
       </div>
