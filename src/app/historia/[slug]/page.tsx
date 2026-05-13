@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getRelatoBySlug, getCapitulosByRelatoId } from '@/lib/supabase/queries';
+import { getRelatoBySlug, getPublishedCapitulosByRelatoId } from '@/lib/supabase/queries';
 import HistoriaIndexClient from './components/HistoriaIndexClient';
 
 interface Props {
@@ -16,12 +16,13 @@ export default async function HistoriaPage({ params }: Props) {
     redirect('/stories-library');
   }
 
-  const capitulos = await getCapitulosByRelatoId(story.id);
+  const capitulos = await getPublishedCapitulosByRelatoId(story.id);
 
-  // No chapters → fall back to the immersive reader
-  if (capitulos.length === 0) {
+  // No chapters at all → fall back to the immersive reader
+  if (!story.hasChapters) {
     redirect(`/immersive-reading-mode?id=${story.id}`);
   }
 
+  // Story has chapters but none published yet → show empty state (not a redirect)
   return <HistoriaIndexClient story={story} capitulos={capitulos} />;
 }

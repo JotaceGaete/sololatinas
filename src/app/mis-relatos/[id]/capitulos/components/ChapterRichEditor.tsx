@@ -2,6 +2,7 @@
 
 import React, { useRef, useCallback, useEffect, useState } from 'react';
 import { Image as ImageIcon, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface Props {
   value: string;
@@ -88,8 +89,8 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
       insertHtmlAtSaved(
         `<figure class="ch-figure"><img src="${publicUrl}" alt="" /><figcaption class="ch-figcaption" data-placeholder="Descripción (opcional)"></figcaption></figure><p></p>`
       );
-    } catch {
-      // silently ignore — user will notice image didn't appear
+    } catch (err: any) {
+      toast.error('Error al subir imagen: ' + (err?.message ?? 'Verifica la configuración de R2'));
     } finally {
       setUploadingImage(false);
     }
@@ -168,19 +169,22 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        {/* Image upload */}
+        {/* Image upload — prominent labeled button */}
         <button
           type="button"
-          title="Insertar imagen"
+          title="Insertar imagen (JPG, PNG, WebP — máx 5 MB)"
           onMouseDown={(e) => {
             e.preventDefault();
             captureRange();
             fileInputRef.current?.click();
           }}
           disabled={uploadingImage}
-          className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors disabled:opacity-50"
         >
-          {uploadingImage ? <Loader2 size={13} className="animate-spin" /> : <ImageIcon size={13} />}
+          {uploadingImage
+            ? <><Loader2 size={12} className="animate-spin" /> Subiendo…</>
+            : <><ImageIcon size={12} /> Insertar imagen</>
+          }
         </button>
         <input
           ref={fileInputRef}

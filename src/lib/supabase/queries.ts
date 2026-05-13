@@ -60,6 +60,25 @@ export async function getRelatoBySlug(slug: string): Promise<Story | null> {
   }
 }
 
+export async function getPublishedCapitulosByRelatoId(relatoId: string): Promise<Capitulo[]> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('historia_capitulos')
+      .select('*, media_blocks:capitulo_media_blocks(*)')
+      .eq('historia_id', relatoId)
+      .eq('estado', 'publicado')
+      .order('numero', { ascending: true });
+    if (error) {
+      console.error('[getPublishedCapitulosByRelatoId] error:', error.message);
+      return [];
+    }
+    return ((data ?? []) as SupabaseCapitulo[]).map(mapCapituloToModel);
+  } catch {
+    return [];
+  }
+}
+
 export async function getCapitulosByRelatoId(relatoId: string): Promise<Capitulo[]> {
   try {
     const supabase = await createClient();

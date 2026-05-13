@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { getRelatoBySlug, getCapitulosByRelatoId, getCapituloByNumero } from '@/lib/supabase/queries';
+import { getRelatoBySlug, getPublishedCapitulosByRelatoId, getCapituloByNumero } from '@/lib/supabase/queries';
 import ChapterReaderClient from './components/ChapterReaderClient';
 
 interface Props {
@@ -19,7 +19,7 @@ export default async function CapituloPage({ params }: Props) {
 
   const [capitulo, allCapitulos] = await Promise.all([
     getCapituloByNumero(story.id, numero),
-    getCapitulosByRelatoId(story.id),
+    getPublishedCapitulosByRelatoId(story.id),
   ]);
 
   if (!capitulo) redirect(`/historia/${slug}`);

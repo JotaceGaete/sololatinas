@@ -77,6 +77,12 @@ export default function HistoriaIndexClient({ story, capitulos }: Props) {
           <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground mb-4">
             Índice de capítulos
           </h2>
+          {capitulos.length === 0 && (
+            <div className="text-center py-12 text-muted-foreground">
+              <p className="text-sm">Esta historia aún no tiene capítulos publicados.</p>
+              <p className="text-xs mt-1 opacity-60">Vuelve pronto.</p>
+            </div>
+          )}
           {capitulos.map((cap) => {
             const wordCount = cap.cuerpo.split(/\s+/).filter(Boolean).length;
             const readTime = Math.max(1, Math.ceil(wordCount / 200));
@@ -116,14 +122,16 @@ export default function HistoriaIndexClient({ story, capitulos }: Props) {
         </div>
 
         {/* Start reading CTA */}
-        <div className="mt-10 text-center">
-          <Link
-            href={`/historia/${story.slug}/capitulo/1`}
-            className="btn-primary px-10 py-3 text-sm inline-flex items-center gap-2"
-          >
-            <BookOpen size={16} /> Comenzar a leer
-          </Link>
-        </div>
+        {capitulos.length > 0 && (
+          <div className="mt-10 text-center">
+            <Link
+              href={`/historia/${story.slug}/capitulo/${capitulos[0].numero}`}
+              className="btn-primary px-10 py-3 text-sm inline-flex items-center gap-2"
+            >
+              <BookOpen size={16} /> Comenzar a leer
+            </Link>
+          </div>
+        )}
       </div>
     </div>
   );

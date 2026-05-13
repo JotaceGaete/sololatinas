@@ -27,6 +27,9 @@ interface Relato {
   updated_at: string;
   comment_count?: number;
   reaction_count?: number;
+  chapter_total?: number;
+  chapter_published?: number;
+  chapter_draft?: number;
 }
 
 
@@ -224,13 +227,26 @@ function StoryRow({
       </div>
     </div>
 
-      {/* Chapters link */}
-      <div className="border-t border-border px-5 py-2">
+      {/* Chapters footer */}
+      <div className="border-t border-border px-5 py-2.5 flex items-center justify-between gap-3">
+        {relato.chapter_total !== undefined && relato.chapter_total > 0 ? (
+          <span className="text-xs text-muted-foreground">
+            <Layers size={11} className="inline mr-1 opacity-60" />
+            {relato.chapter_total} {relato.chapter_total === 1 ? 'capítulo' : 'capítulos'}
+            {' · '}
+            <span className="text-emerald-400">{relato.chapter_published} publicados</span>
+            {relato.chapter_draft! > 0 && (
+              <span className="text-amber-400/70"> · {relato.chapter_draft} borradores</span>
+            )}
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground/50">Sin capítulos</span>
+        )}
         <Link
           href={`/mis-relatos/${relato.id}/capitulos`}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+          className="flex items-center gap-1 text-xs text-primary/80 hover:text-primary transition-colors font-medium"
         >
-          <Layers size={12} /> Escribir capítulos →
+          <Layers size={11} /> Gestionar capítulos →
         </Link>
       </div>
     </div>);
@@ -293,11 +309,20 @@ export default function MisRelatosClient() {
 
         const enriched = await Promise.all(
           relatosData.map(async (r) => {
-            const [commentResult, reactionResult] = await Promise.all([
+            const [commentResult, reactionResult, chapterResult] = await Promise.all([
               getSupabase().from('story_comments').select('id', { count: 'exact', head: true }).eq('relato_id', r.id),
               getSupabase().from('story_reactions').select('id', { count: 'exact', head: true }).eq('relato_id', r.id),
+              getSupabase().from('historia_capitulos').select('estado').eq('historia_id', r.id),
             ]);
-            return { ...r, comment_count: commentResult.count ?? 0, reaction_count: reactionResult.count ?? 0 };
+            const caps = (chapterResult.data ?? []) as { estado: string }[];
+            return {
+              ...r,
+              comment_count: commentResult.count ?? 0,
+              reaction_count: reactionResult.count ?? 0,
+              chapter_total: caps.length,
+              chapter_published: caps.filter((c) => c.estado === 'publicado').length,
+              chapter_draft: caps.filter((c) => c.estado !== 'publicado').length,
+            };
           })
         );
 
