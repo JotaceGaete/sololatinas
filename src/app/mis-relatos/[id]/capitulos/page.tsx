@@ -24,7 +24,7 @@ export default async function CapitulosPage({ params }: Props) {
 
   if (!relato) redirect('/mis-relatos');
 
-  const owner = (relato as SupabaseRelato).autor_id ?? (relato as SupabaseRelato).author_id;
+  const owner = (relato as SupabaseRelato).autor_id;
   if (owner !== user.id) redirect('/mis-relatos');
 
   const story = mapRelatoToStory(relato as SupabaseRelato);
