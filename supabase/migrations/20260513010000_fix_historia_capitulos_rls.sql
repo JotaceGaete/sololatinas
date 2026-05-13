@@ -4,8 +4,7 @@
 -- Run this directly in the Supabase SQL Editor.
 -- Fully idempotent: drops and recreates all policies.
 --
--- Ownership check covers both autor_id and author_id columns
--- because relatos uses mixed column naming.
+-- Ownership check uses relatos.autor_id (the only author FK column).
 -- ============================================================
 
 -- Enable RLS (safe to run even if already enabled)
@@ -40,7 +39,7 @@ CREATE POLICY "author_select_capitulos" ON public.historia_capitulos
     EXISTS (
       SELECT 1 FROM public.relatos r
       WHERE r.id = historia_id
-        AND (r.autor_id = auth.uid() OR r.author_id = auth.uid())
+        AND r.autor_id = auth.uid()
     )
   );
 
@@ -51,7 +50,7 @@ CREATE POLICY "author_insert_capitulos" ON public.historia_capitulos
     EXISTS (
       SELECT 1 FROM public.relatos r
       WHERE r.id = historia_id
-        AND (r.autor_id = auth.uid() OR r.author_id = auth.uid())
+        AND r.autor_id = auth.uid()
     )
   );
 
@@ -62,14 +61,14 @@ CREATE POLICY "author_update_capitulos" ON public.historia_capitulos
     EXISTS (
       SELECT 1 FROM public.relatos r
       WHERE r.id = historia_id
-        AND (r.autor_id = auth.uid() OR r.author_id = auth.uid())
+        AND r.autor_id = auth.uid()
     )
   )
   WITH CHECK (
     EXISTS (
       SELECT 1 FROM public.relatos r
       WHERE r.id = historia_id
-        AND (r.autor_id = auth.uid() OR r.author_id = auth.uid())
+        AND r.autor_id = auth.uid()
     )
   );
 
@@ -80,7 +79,7 @@ CREATE POLICY "author_delete_capitulos" ON public.historia_capitulos
     EXISTS (
       SELECT 1 FROM public.relatos r
       WHERE r.id = historia_id
-        AND (r.autor_id = auth.uid() OR r.author_id = auth.uid())
+        AND r.autor_id = auth.uid()
     )
   );
 
@@ -113,7 +112,7 @@ CREATE POLICY "author_select_media_blocks" ON public.capitulo_media_blocks
       SELECT 1 FROM public.historia_capitulos hc
         JOIN public.relatos r ON r.id = hc.historia_id
       WHERE hc.id = capitulo_id
-        AND (r.autor_id = auth.uid() OR r.author_id = auth.uid())
+        AND r.autor_id = auth.uid()
     )
   );
 
@@ -125,7 +124,7 @@ CREATE POLICY "author_insert_media_blocks" ON public.capitulo_media_blocks
       SELECT 1 FROM public.historia_capitulos hc
         JOIN public.relatos r ON r.id = hc.historia_id
       WHERE hc.id = capitulo_id
-        AND (r.autor_id = auth.uid() OR r.author_id = auth.uid())
+        AND r.autor_id = auth.uid()
     )
   );
 
@@ -137,7 +136,7 @@ CREATE POLICY "author_update_media_blocks" ON public.capitulo_media_blocks
       SELECT 1 FROM public.historia_capitulos hc
         JOIN public.relatos r ON r.id = hc.historia_id
       WHERE hc.id = capitulo_id
-        AND (r.autor_id = auth.uid() OR r.author_id = auth.uid())
+        AND r.autor_id = auth.uid()
     )
   )
   WITH CHECK (
@@ -145,7 +144,7 @@ CREATE POLICY "author_update_media_blocks" ON public.capitulo_media_blocks
       SELECT 1 FROM public.historia_capitulos hc
         JOIN public.relatos r ON r.id = hc.historia_id
       WHERE hc.id = capitulo_id
-        AND (r.autor_id = auth.uid() OR r.author_id = auth.uid())
+        AND r.autor_id = auth.uid()
     )
   );
 
@@ -157,6 +156,6 @@ CREATE POLICY "author_delete_media_blocks" ON public.capitulo_media_blocks
       SELECT 1 FROM public.historia_capitulos hc
         JOIN public.relatos r ON r.id = hc.historia_id
       WHERE hc.id = capitulo_id
-        AND (r.autor_id = auth.uid() OR r.author_id = auth.uid())
+        AND r.autor_id = auth.uid()
     )
   );
