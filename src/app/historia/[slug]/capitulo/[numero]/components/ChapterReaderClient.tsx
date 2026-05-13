@@ -17,6 +17,23 @@ interface Props {
   allCapitulos: Capitulo[];
 }
 
+interface MediaModal {
+  type: 'image' | 'video';
+  url: string;
+}
+
+function getVideoEmbed(url: string): string {
+  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1`;
+  const vi = url.match(/vimeo\.com\/(\d+)/);
+  if (vi) return `https://player.vimeo.com/video/${vi[1]}?autoplay=1`;
+  return url;
+}
+
+function isDirectVideo(url: string): boolean {
+  return /\.(mp4|webm|ogg|mov)(\?|$)/i.test(url);
+}
+
 function MediaBlock({ block }: { block: CapituloMediaBlock }) {
   if (block.tipo === 'separador') {
     return (
@@ -61,21 +78,34 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
   const [currentPage, setCurrentPage] = useState(1);
   const [indexOpen, setIndexOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [mediaModal, setMediaModal] = useState<MediaModal | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Attach click listeners to inline <img> inside ch-content after each render
+  // Attach click handlers after each page render
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
-    const imgs = el.querySelectorAll<HTMLImageElement>('img');
-    const handlers: Array<() => void> = [];
-    imgs.forEach((img) => {
+    const cleanup: Array<() => void> = [];
+
+    // Inline images → lightbox
+    el.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
       const handler = () => setLightboxSrc(img.src);
       img.addEventListener('click', handler);
       img.style.cursor = 'zoom-in';
-      handlers.push(() => img.removeEventListener('click', handler));
+      cleanup.push(() => img.removeEventListener('click', handler));
     });
-    return () => handlers.forEach((h) => h());
+
+    // Narrative media blocks → media modal
+    el.querySelectorAll<HTMLElement>('[data-media-type]').forEach((block) => {
+      const type = block.dataset.mediaType as 'image' | 'video';
+      const url = block.dataset.mediaUrl ?? '';
+      if (!url) return;
+      const handler = () => setMediaModal({ type, url });
+      block.addEventListener('click', handler);
+      cleanup.push(() => block.removeEventListener('click', handler));
+    });
+
+    return () => cleanup.forEach((fn) => fn());
   }, [currentPage]);
 
   const pages = useMemo(
@@ -87,7 +117,6 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
   const prevCapitulo = allCapitulos.find((c) => c.numero === capitulo.numero - 1) ?? null;
   const nextCapitulo = allCapitulos.find((c) => c.numero === capitulo.numero + 1) ?? null;
 
-  // Media blocks before / after text (posicion-based)
   const beforeBlocks = (capitulo.mediaBlocks ?? []).filter((b) => b.posicion === 0);
   const afterBlocks = (capitulo.mediaBlocks ?? []).filter((b) => b.posicion > 0);
 
@@ -106,6 +135,27 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
         .ch-content figure { margin: 2rem 0; border-radius: 0.75rem; overflow: hidden; }
         .ch-content figure img { width: 100%; display: block; border-radius: 0.75rem; }
         .ch-content figcaption { font-size: 0.78rem; color: #9A8A7A; text-align: center; padding: 0.5rem 0.75rem; font-style: italic; }
+        .ch-content .ch-media-block {
+          display: block;
+          width: fit-content;
+          margin: 1.75rem auto;
+          padding: 0.45rem 1.75rem;
+          border: 1px solid rgba(201,169,110,0.35);
+          border-radius: 999px;
+          color: #C9A96E;
+          font-size: 0.78rem;
+          letter-spacing: 0.08em;
+          text-align: center;
+          cursor: pointer;
+          user-select: none;
+          background: rgba(201,169,110,0.04);
+          transition: background 0.15s, border-color 0.15s, transform 0.1s;
+        }
+        .ch-content .ch-media-block:hover {
+          background: rgba(201,169,110,0.10);
+          border-color: rgba(201,169,110,0.6);
+          transform: scale(1.02);
+        }
       `}</style>
 
       {/* Top bar */}
@@ -177,10 +227,8 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
           )}
         </div>
 
-        {/* Media before text */}
         {beforeBlocks.map((b) => <MediaBlock key={b.id} block={b} />)}
 
-        {/* Page content */}
         {totalPages > 1 && (
           <p className="text-xs text-[#9A8A7A] text-center mb-6">
             — Página {currentPage} de {totalPages} —
@@ -192,7 +240,6 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
           dangerouslySetInnerHTML={{ __html: pages[currentPage - 1] ?? '' }}
         />
 
-        {/* Media after text */}
         {afterBlocks.map((b) => <MediaBlock key={b.id} block={b} />)}
 
         {/* In-chapter pagination */}
@@ -284,6 +331,51 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
             className="max-w-full max-h-full object-contain rounded-xl"
             onClick={(e) => e.stopPropagation()}
           />
+        </div>
+      )}
+
+      {/* Narrative media modal */}
+      {mediaModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 p-4"
+          onClick={() => setMediaModal(null)}
+        >
+          <button
+            className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors z-10"
+            onClick={() => setMediaModal(null)}
+          >
+            <X size={24} />
+          </button>
+
+          {mediaModal.type === 'image' ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={mediaModal.url}
+              alt=""
+              className="max-w-full max-h-[90vh] object-contain rounded-xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : isDirectVideo(mediaModal.url) ? (
+            <video
+              src={mediaModal.url}
+              controls
+              autoPlay
+              className="max-w-full max-h-[90vh] rounded-xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <div
+              className="w-full max-w-3xl aspect-video rounded-xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <iframe
+                src={getVideoEmbed(mediaModal.url)}
+                className="w-full h-full"
+                allowFullScreen
+                allow="autoplay; encrypted-media"
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

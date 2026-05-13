@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useCallback, useEffect, useState } from 'react';
-import { Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Image as ImageIcon, Loader2, Play, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -25,12 +25,20 @@ const HEADING_OPTIONS = [
   { label: 'Título 3', tag: 'h3' },
 ];
 
+function buildMediaBlock(type: 'image' | 'video', url: string): string {
+  const label = type === 'image' ? '📷 Ver imagen' : '▶ Ver video';
+  return `<div class="ch-media-block" data-media-type="${type}" data-media-url="${url}" contenteditable="false">${label}</div><p></p>`;
+}
+
 export default function ChapterRichEditor({ value, onChange, placeholder, userId, minHeight = 500 }: Props) {
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalUpdate = useRef(false);
   const savedRange = useRef<Range | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [showVideoInput, setShowVideoInput] = useState(false);
+  const [videoUrl, setVideoUrl] = useState('');
 
   useEffect(() => {
     if (editorRef.current && !isInternalUpdate.current) {
@@ -95,6 +103,33 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
       setUploadingImage(false);
     }
   }, [userId, insertHtmlAtSaved]);
+
+  const handleMediaImageFile = useCallback(async (file: File) => {
+    if (!file.type.startsWith('image/')) return;
+    setUploadingImage(true);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      body.append('userId', userId);
+      body.append('folder', 'chapter_images');
+      const res = await fetch('/api/r2/upload', { method: 'POST', body });
+      if (!res.ok) throw new Error('Upload failed');
+      const { publicUrl } = await res.json();
+      insertHtmlAtSaved(buildMediaBlock('image', publicUrl));
+    } catch (err: any) {
+      toast.error('Error al subir imagen: ' + (err?.message ?? 'Verifica la configuración de R2'));
+    } finally {
+      setUploadingImage(false);
+    }
+  }, [userId, insertHtmlAtSaved]);
+
+  const handleInsertVideo = useCallback(() => {
+    const url = videoUrl.trim();
+    if (!url) return;
+    insertHtmlAtSaved(buildMediaBlock('video', url));
+    setVideoUrl('');
+    setShowVideoInput(false);
+  }, [videoUrl, insertHtmlAtSaved]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -169,21 +204,21 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        {/* Image upload — prominent labeled button */}
+        {/* Inline image (existing behavior — shows image in text) */}
         <button
           type="button"
-          title="Insertar imagen (JPG, PNG, WebP — máx 5 MB)"
+          title="Insertar imagen en el texto"
           onMouseDown={(e) => {
             e.preventDefault();
             captureRange();
             fileInputRef.current?.click();
           }}
           disabled={uploadingImage}
-          className="flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors disabled:opacity-50"
+          className="flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-muted-foreground bg-white/5 hover:bg-white/10 border border-border transition-colors disabled:opacity-50"
         >
           {uploadingImage
             ? <><Loader2 size={12} className="animate-spin" /> Subiendo…</>
-            : <><ImageIcon size={12} /> Insertar imagen</>
+            : <><ImageIcon size={12} /> Imagen</>
           }
         </button>
         <input
@@ -198,6 +233,46 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
           }}
         />
 
+        {/* Media reveal — "Ver imagen" block */}
+        <button
+          type="button"
+          title="Insertar bloque narrativo: Ver imagen (el lector lo abre en modal)"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            captureRange();
+            (document.getElementById('media-img-input') as HTMLInputElement)?.click();
+          }}
+          disabled={uploadingImage}
+          className="flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors disabled:opacity-50"
+        >
+          <ImageIcon size={12} /> Ver imagen
+        </button>
+        <input
+          id="media-img-input"
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleMediaImageFile(f);
+            e.target.value = '';
+          }}
+        />
+
+        {/* Media reveal — "Ver video" block */}
+        <button
+          type="button"
+          title="Insertar bloque narrativo: Ver video (el lector lo abre en modal)"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            captureRange();
+            setShowVideoInput((v) => !v);
+          }}
+          className="flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors"
+        >
+          <Play size={12} /> Ver video
+        </button>
+
         <div className="w-px h-5 bg-border mx-1" />
 
         <button type="button" title="Limpiar formato" onMouseDown={(e) => { e.preventDefault(); execCmd('removeFormat'); }}
@@ -207,6 +282,38 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
           </svg>
         </button>
       </div>
+
+      {/* Video URL input bar */}
+      {showVideoInput && (
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-primary/5">
+          <Play size={12} className="text-primary flex-shrink-0" />
+          <input
+            ref={videoInputRef}
+            type="url"
+            value={videoUrl}
+            onChange={(e) => setVideoUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); handleInsertVideo(); }
+              if (e.key === 'Escape') { setShowVideoInput(false); setVideoUrl(''); }
+            }}
+            placeholder="Pega URL de YouTube, Vimeo o video directo…"
+            className="flex-1 bg-transparent text-xs text-foreground placeholder-muted-foreground/50 outline-none"
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={handleInsertVideo}
+            disabled={!videoUrl.trim()}
+            className="px-2.5 py-1 text-xs font-medium bg-primary text-noir rounded-md disabled:opacity-40 transition-all"
+          >
+            Insertar
+          </button>
+          <button type="button" onClick={() => { setShowVideoInput(false); setVideoUrl(''); }}
+            className="p-1 text-muted-foreground hover:text-foreground transition-colors">
+            <X size={12} />
+          </button>
+        </div>
+      )}
 
       {/* Editor */}
       <div className="relative" style={{ minHeight }}>
@@ -250,6 +357,22 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
         .ch-figure img { width: 100%; display: block; }
         .ch-figcaption { font-size: 0.8rem; color: #9A8A7A; text-align: center; padding: 0.4rem 0.75rem; font-style: italic; min-height: 1.5rem; }
         .ch-figcaption:empty::before { content: attr(data-placeholder); opacity: 0.4; pointer-events: none; }
+        .ch-media-block {
+          display: block;
+          width: fit-content;
+          margin: 1.25rem auto;
+          padding: 0.5rem 1.5rem;
+          border: 1px solid rgba(201,169,110,0.4);
+          border-radius: 999px;
+          color: #C9A96E;
+          font-size: 0.8rem;
+          font-family: var(--font-display, sans-serif);
+          letter-spacing: 0.06em;
+          text-align: center;
+          cursor: pointer;
+          user-select: none;
+          background: rgba(201,169,110,0.06);
+        }
       `}</style>
     </div>
   );
