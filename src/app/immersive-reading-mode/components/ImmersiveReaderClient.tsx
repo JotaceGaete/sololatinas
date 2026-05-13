@@ -8,6 +8,7 @@ import StoryCard from '@/components/ui/StoryCard';
 import { createClient } from '@/lib/supabase/client';
 import { isPublishedRelato, mapRelatoToStory } from '@/lib/supabase/mappers';
 import type { Story } from '@/lib/stories/types';
+import { renderStoryHtml, splitIntoPages } from '@/lib/stories/render';
 import type { SupabaseRelato } from '@/lib/supabase/mappers';
 import { X, ChevronLeft, BookmarkPlus, Share2, Heart, Sun, Moon, Coffee, Type, Minus, Plus, Eye, BookOpen, AlignJustify, ArrowLeft, ArrowRight, Library, Sparkles, CheckCircle } from 'lucide-react';
 import StoryReactions from './StoryReactions';
@@ -53,36 +54,8 @@ const fontFamilies: Record<FontFamily, { label: string; class: string }> = {
   sans: { label: 'Moderna', class: 'font-sans' },
 };
 
-function splitIntoPages(text: string, targetWords = TARGET_WORDS_PER_PAGE): string[] {
-  const paragraphs = text.split(/\n\n+/).filter((p) => p.trim().length > 0);
-  const pages: string[] = [];
-  let currentPage: string[] = [];
-  let currentWordCount = 0;
-
-  for (const paragraph of paragraphs) {
-    const wordCount = paragraph.trim().split(/\s+/).length;
-
-    if (currentWordCount > 0 && currentWordCount + wordCount > WORDS_PER_PAGE_MAX) {
-      pages.push(currentPage.join('\n\n'));
-      currentPage = [paragraph];
-      currentWordCount = wordCount;
-    } else {
-      currentPage.push(paragraph);
-      currentWordCount += wordCount;
-
-      if (currentWordCount >= WORDS_PER_PAGE_MIN && currentWordCount >= targetWords) {
-        pages.push(currentPage.join('\n\n'));
-        currentPage = [];
-        currentWordCount = 0;
-      }
-    }
-  }
-
-  if (currentPage.length > 0) {
-    pages.push(currentPage.join('\n\n'));
-  }
-
-  return pages.length > 0 ? pages : [text];
+function splitIntoPagesLocal(text: string, targetWords = TARGET_WORDS_PER_PAGE): string[] {
+  return splitIntoPages(text, targetWords, WORDS_PER_PAGE_MIN, WORDS_PER_PAGE_MAX);
 }
 
 function showToast(message: string) {
@@ -154,7 +127,7 @@ export default function ImmersiveReaderClient() {
   }, [relatoId]);
 
   const fullText = useMemo(() => story ? (story.fullText || story.excerpt) : '', [story]);
-  const pages = useMemo(() => story ? splitIntoPages(fullText) : [''], [story, fullText]);
+  const pages = useMemo(() => story ? splitIntoPagesLocal(fullText) : [''], [story, fullText]);
   const totalPages = pages.length;
 
   const [theme, setTheme] = useState<ReaderTheme>('dark');
@@ -299,6 +272,16 @@ export default function ImmersiveReaderClient() {
           to { opacity: 1; transform: scale(1); }
         }
         .end-screen-animate { animation: endScreenIn 0.5s ease; }
+        .story-html-content p { margin-bottom: 1.75rem; text-align: justify; }
+        .story-html-content h1,.story-html-content h2,.story-html-content h3 { font-family: var(--font-display); color: #C9A96E; margin: 1.5rem 0 0.75rem; font-weight: 700; }
+        .story-html-content h1 { font-size: 1.6em; }
+        .story-html-content h2 { font-size: 1.35em; }
+        .story-html-content h3 { font-size: 1.15em; }
+        .story-html-content blockquote { border-left: 3px solid #C9A96E; padding-left: 1.25rem; margin: 1.25rem 0; font-style: italic; opacity: 0.85; }
+        .story-html-content strong { font-weight: 700; }
+        .story-html-content em { font-style: italic; }
+        .story-html-content hr { border: none; border-top: 1px solid rgba(201,169,110,0.3); margin: 2rem 0; }
+        .story-html-content br { display: block; content: ""; margin-bottom: 0.5rem; }
       `}</style>
 
       {/* ── FIXED TOP BAR ── */}
@@ -580,15 +563,10 @@ export default function ImmersiveReaderClient() {
 
                 {/* Page content */}
                 <div
-                  className={`leading-[1.95] ${tc.text} ${ff.class}`}
+                  className={`story-html-content leading-[1.95] ${tc.text} ${ff.class}`}
                   style={{ fontSize: `${fontSize}px` }}
-                >
-                  {pages[currentPage - 1]?.split('\n\n').map((para, i) => (
-                    <p key={`p-${currentPage}-${i}`} className="mb-7 text-justify">
-                      {para.trim()}
-                    </p>
-                  ))}
-                </div>
+                  dangerouslySetInnerHTML={{ __html: pages[currentPage - 1] ?? '' }}
+                />
 
                 {/* ── END SCREEN (last page) ── */}
                 {currentPage === totalPages && (
@@ -742,15 +720,10 @@ export default function ImmersiveReaderClient() {
             {readingMode === 'scroll' && (
               <div ref={contentRef}>
                 <div
-                  className={`leading-[1.95] ${tc.text} ${ff.class}`}
+                  className={`story-html-content leading-[1.95] ${tc.text} ${ff.class}`}
                   style={{ fontSize: `${fontSize}px` }}
-                >
-                  {fullText.split('\n\n').map((para, i) => (
-                    <p key={`scroll-p-${i}`} className="mb-7 text-justify">
-                      {para.trim()}
-                    </p>
-                  ))}
-                </div>
+                  dangerouslySetInnerHTML={{ __html: renderStoryHtml(fullText) }}
+                />
 
                 {/* End of story in scroll mode */}
                 <div className="mt-16 mb-8">
