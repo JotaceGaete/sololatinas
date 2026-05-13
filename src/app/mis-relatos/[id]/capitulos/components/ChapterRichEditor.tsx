@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useRef, useCallback, useEffect, useState } from 'react';
-import { Eye, Image as ImageIcon, Loader2, Play, X } from 'lucide-react';
+import { Image as ImageIcon, Loader2, Pencil, Play, RefreshCw, Trash2, X } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface Props {
@@ -28,22 +28,35 @@ const HEADING_OPTIONS = [
 const IMAGE_LABELS = ['Ver imagen', 'Ver ilustración', 'Ver escena', 'Ver retrato'];
 const VIDEO_LABELS = ['Ver video', 'Ver escena', 'Ver clip'];
 
+// Popover state machine
+type Popover =
+  | null
+  | { phase: 'label'; mediaType: 'image' | 'video'; target?: HTMLElement }
+  | { phase: 'upload'; label: string; target?: HTMLElement }
+  | { phase: 'url'; label: string; target?: HTMLElement };
+
+// Hover toolbar for existing blocks
+interface HoverBlock {
+  el: HTMLElement;
+  top: number;
+  left: number;
+  width: number;
+}
+
 export default function ChapterRichEditor({ value, onChange, placeholder, userId, minHeight = 500 }: Props) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const isInternalUpdate = useRef(false);
   const savedRange = useRef<Range | null>(null);
   const inlineFileRef = useRef<HTMLInputElement>(null);
   const revealFileRef = useRef<HTMLInputElement>(null);
-  const [uploadingInline, setUploadingInline] = useState(false);
-  const [uploadingReveal, setUploadingReveal] = useState(false);
-  // Reveal image config bar
-  const [showRevealImage, setShowRevealImage] = useState(false);
-  const [revealImageLabel, setRevealImageLabel] = useState(IMAGE_LABELS[0]);
-  // Reveal video config bar
-  const [showRevealVideo, setShowRevealVideo] = useState(false);
-  const [revealVideoLabel, setRevealVideoLabel] = useState(VIDEO_LABELS[0]);
+  const hoverLeaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [popover, setPopover] = useState<Popover>(null);
   const [videoUrl, setVideoUrl] = useState('');
+  const [hoverBlock, setHoverBlock] = useState<HoverBlock | null>(null);
 
+  // ── Sync value → editor innerHTML ─────────────────────────────────────────────
   useEffect(() => {
     if (editorRef.current && !isInternalUpdate.current) {
       if (editorRef.current.innerHTML !== value) {
@@ -51,6 +64,30 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
       }
     }
     isInternalUpdate.current = false;
+  }, [value]);
+
+  // ── Attach hover listeners to existing reveal blocks ──────────────────────────
+  useEffect(() => {
+    const editor = editorRef.current;
+    const wrap = wrapRef.current;
+    if (!editor || !wrap) return;
+    const cleanup: Array<() => void> = [];
+
+    editor.querySelectorAll<HTMLElement>('.ch-reveal-block, .ch-media-block').forEach((block) => {
+      const enter = () => {
+        if (hoverLeaveTimer.current) clearTimeout(hoverLeaveTimer.current);
+        const r = block.getBoundingClientRect();
+        const wr = wrap.getBoundingClientRect();
+        setHoverBlock({ el: block, top: r.top - wr.top - 40, left: r.left - wr.left, width: r.width });
+      };
+      const leave = () => {
+        hoverLeaveTimer.current = setTimeout(() => setHoverBlock(null), 200);
+      };
+      block.addEventListener('mouseenter', enter);
+      block.addEventListener('mouseleave', leave);
+      cleanup.push(() => { block.removeEventListener('mouseenter', enter); block.removeEventListener('mouseleave', leave); });
+    });
+    return () => cleanup.forEach((fn) => fn());
   }, [value]);
 
   const notify = useCallback(() => {
@@ -68,9 +105,7 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
 
   const captureRange = useCallback(() => {
     const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      savedRange.current = sel.getRangeAt(0).cloneRange();
-    }
+    if (sel && sel.rangeCount > 0) savedRange.current = sel.getRangeAt(0).cloneRange();
   }, []);
 
   const insertHtmlAtSaved = useCallback((html: string) => {
@@ -84,12 +119,21 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
     notify();
   }, [notify]);
 
-  // Direct DOM insertion — execCommand('insertHTML') strips data-* attributes
-  const insertRevealBlock = useCallback((type: 'image' | 'video', url: string, label: string) => {
+  // ── Insert or update a reveal block ───────────────────────────────────────────
+  const applyRevealBlock = useCallback((type: 'image' | 'video', url: string, label: string, target?: HTMLElement) => {
     const editor = editorRef.current;
     if (!editor) return;
-    editor.focus();
 
+    if (target) {
+      // Editing an existing block
+      target.setAttribute('data-media-type', type);
+      target.setAttribute('data-media-url', url);
+      target.textContent = label;
+      notify();
+      return;
+    }
+
+    editor.focus();
     const block = document.createElement('div');
     block.className = 'ch-reveal-block';
     block.setAttribute('data-media-type', type);
@@ -100,7 +144,6 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
     const gap = document.createElement('p');
     gap.appendChild(document.createElement('br'));
 
-    // Insert after the block-level ancestor that contains the cursor
     const sel = window.getSelection();
     let anchorBlock: Element | null = null;
     if (savedRange.current || (sel && sel.rangeCount > 0)) {
@@ -117,105 +160,118 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
       editor.appendChild(gap);
     }
 
-    // Move cursor into the gap paragraph
     const newRange = document.createRange();
     newRange.setStart(gap, 0);
     newRange.collapse(true);
     if (sel) { sel.removeAllRanges(); sel.addRange(newRange); }
 
-    console.log('[ChapterRichEditor] insertRevealBlock: has data-media-type:', editor.querySelector('[data-media-type]') !== null);
+    console.log('[ChapterRichEditor] applyRevealBlock: has data-media-type:', editor.querySelector('[data-media-type]') !== null);
     notify();
   }, [notify]);
 
-  // ── Inline image upload ────────────────────────────────────────────────────────
-  const handleInlineImageFile = useCallback(async (file: File) => {
+  // ── Inline image ──────────────────────────────────────────────────────────────
+  const handleInlineFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
-    setUploadingInline(true);
+    setUploading(true);
     try {
       const body = new FormData();
-      body.append('file', file);
-      body.append('userId', userId);
-      body.append('folder', 'chapter_images');
+      body.append('file', file); body.append('userId', userId); body.append('folder', 'chapter_images');
       const res = await fetch('/api/r2/upload', { method: 'POST', body });
       if (!res.ok) throw new Error('Upload failed');
       const { publicUrl } = await res.json();
-      insertHtmlAtSaved(
-        `<figure class="ch-figure"><img src="${publicUrl}" alt="" /><figcaption class="ch-figcaption" data-placeholder="Descripción (opcional)"></figcaption></figure><p></p>`
-      );
+      insertHtmlAtSaved(`<figure class="ch-figure"><img src="${publicUrl}" alt="" /><figcaption class="ch-figcaption" data-placeholder="Descripción (opcional)"></figcaption></figure><p></p>`);
     } catch (err: any) {
-      toast.error('Error al subir imagen: ' + (err?.message ?? 'Verifica la configuración de R2'));
-    } finally {
-      setUploadingInline(false);
-    }
+      toast.error('Error al subir imagen: ' + (err?.message ?? ''));
+    } finally { setUploading(false); }
   }, [userId, insertHtmlAtSaved]);
 
-  // ── Reveal image upload ────────────────────────────────────────────────────────
-  const handleRevealImageFile = useCallback(async (file: File, label: string) => {
+  // ── Upload for reveal block ───────────────────────────────────────────────────
+  const handleRevealUpload = useCallback(async (file: File) => {
+    if (!popover || popover.phase !== 'upload') return;
+    const { label, target } = popover;
     if (!file.type.startsWith('image/')) return;
-    setUploadingReveal(true);
+    setUploading(true);
     try {
       const body = new FormData();
-      body.append('file', file);
-      body.append('userId', userId);
-      body.append('folder', 'chapter_images');
+      body.append('file', file); body.append('userId', userId); body.append('folder', 'chapter_images');
       const res = await fetch('/api/r2/upload', { method: 'POST', body });
       if (!res.ok) throw new Error('Upload failed');
       const { publicUrl } = await res.json();
-      insertRevealBlock('image', publicUrl, label);
-      setShowRevealImage(false);
+      applyRevealBlock('image', publicUrl, label, target);
+      setPopover(null);
     } catch (err: any) {
-      toast.error('Error al subir imagen: ' + (err?.message ?? 'Verifica la configuración de R2'));
-    } finally {
-      setUploadingReveal(false);
-    }
-  }, [userId, insertRevealBlock]);
+      toast.error('Error al subir: ' + (err?.message ?? ''));
+    } finally { setUploading(false); }
+  }, [popover, userId, applyRevealBlock]);
 
-  const handleInsertVideo = useCallback(() => {
+  const handleRevealVideoInsert = useCallback(() => {
+    if (!popover || popover.phase !== 'url') return;
     const url = videoUrl.trim();
     if (!url) return;
-    insertRevealBlock('video', url, revealVideoLabel);
+    applyRevealBlock('video', url, popover.label, popover.target);
     setVideoUrl('');
-    setShowRevealVideo(false);
-  }, [videoUrl, revealVideoLabel, insertRevealBlock]);
+    setPopover(null);
+  }, [popover, videoUrl, applyRevealBlock]);
+
+  // ── Hover block actions ───────────────────────────────────────────────────────
+  const handleHoverEditLabel = () => {
+    if (!hoverBlock) return;
+    const mediaType = (hoverBlock.el.dataset.mediaType as 'image' | 'video') ?? 'image';
+    setPopover({ phase: 'label', mediaType, target: hoverBlock.el });
+    setHoverBlock(null);
+  };
+
+  const handleHoverReplace = () => {
+    if (!hoverBlock) return;
+    const mediaType = (hoverBlock.el.dataset.mediaType as 'image' | 'video') ?? 'image';
+    const currentLabel = hoverBlock.el.textContent ?? IMAGE_LABELS[0];
+    captureRange();
+    if (mediaType === 'image') {
+      setPopover({ phase: 'upload', label: currentLabel, target: hoverBlock.el });
+    } else {
+      setPopover({ phase: 'url', label: currentLabel, target: hoverBlock.el });
+    }
+    setHoverBlock(null);
+  };
+
+  const handleHoverDelete = () => {
+    if (!hoverBlock) return;
+    hoverBlock.el.remove();
+    notify();
+    setHoverBlock(null);
+  };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (file) handleInlineImageFile(file);
-  }, [handleInlineImageFile]);
-
-  const closeAllBars = () => { setShowRevealImage(false); setShowRevealVideo(false); };
+    if (file) handleInlineFile(file);
+  }, [handleInlineFile]);
 
   const isEmpty = !value || value === '<br>' || value === '';
 
   return (
     <div
-      className="flex flex-col border border-border rounded-xl overflow-hidden bg-surface focus-within:border-primary/60 transition-colors"
+      ref={wrapRef}
+      className="relative flex flex-col border border-border rounded-xl overflow-visible bg-surface focus-within:border-primary/60 transition-colors"
       onDrop={handleDrop}
       onDragOver={(e) => e.preventDefault()}
     >
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-border bg-noir/60 sticky top-0 z-10">
+      <div className="flex flex-wrap items-center gap-1 px-3 py-2 border-b border-border bg-noir/60 sticky top-0 z-10 rounded-t-xl">
         <select
           onChange={(e) => { editorRef.current?.focus(); document.execCommand('formatBlock', false, e.target.value); notify(); }}
           className="bg-surface border border-border text-foreground text-xs rounded-md px-2 py-1.5 cursor-pointer focus:outline-none focus:border-primary/60"
           defaultValue="p"
         >
-          {HEADING_OPTIONS.map((h) => (
-            <option key={h.tag} value={h.tag}>{h.label}</option>
-          ))}
+          {HEADING_OPTIONS.map((h) => <option key={h.tag} value={h.tag}>{h.label}</option>)}
         </select>
 
         <div className="w-px h-5 bg-border mx-1" />
 
         {TOOLBAR_BUTTONS.map((btn) => (
-          <button
-            key={btn.cmd}
-            type="button"
-            title={btn.title}
+          <button key={btn.cmd} type="button" title={btn.title}
             onMouseDown={(e) => { e.preventDefault(); execCmd(btn.cmd); }}
-            className={`w-8 h-8 flex items-center justify-center rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors ${btn.style}`}
-          >
+            className={`w-8 h-8 flex items-center justify-center rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors ${btn.style}`}>
             {btn.icon}
           </button>
         ))}
@@ -241,71 +297,52 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
         <div className="w-px h-5 bg-border mx-1" />
 
         <button type="button" title="Cita" onMouseDown={(e) => { e.preventDefault(); execCmd('formatBlock', 'blockquote'); }}
-          className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors text-lg leading-none">
-          "
+          className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors text-lg leading-none">"
         </button>
         <button type="button" title="Separador" onMouseDown={(e) => { e.preventDefault(); execCmd('insertHorizontalRule'); }}
           className="w-8 h-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-white/10 transition-colors">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <line x1="3" y1="12" x2="21" y2="12"/>
-          </svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="12" x2="21" y2="12"/></svg>
         </button>
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        {/* ── Imagen visible (inline) ── */}
-        <button
-          type="button"
-          title="Imagen visible: aparece directamente en el texto"
-          onMouseDown={(e) => { e.preventDefault(); captureRange(); closeAllBars(); inlineFileRef.current?.click(); }}
-          disabled={uploadingInline || uploadingReveal}
+        {/* Imagen visible */}
+        <button type="button" title="Imagen visible: aparece directamente en el texto"
+          onMouseDown={(e) => { e.preventDefault(); captureRange(); inlineFileRef.current?.click(); }}
+          disabled={uploading}
           className="flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-muted-foreground bg-white/5 hover:bg-white/10 border border-border transition-colors disabled:opacity-50"
         >
-          {uploadingInline
-            ? <><Loader2 size={12} className="animate-spin" /> Subiendo…</>
-            : <><ImageIcon size={12} /> Imagen visible</>
-          }
+          {uploading ? <><Loader2 size={12} className="animate-spin" /> Subiendo…</> : <><ImageIcon size={12} /> Imagen</>}
         </button>
         <input ref={inlineFileRef} type="file" accept="image/*" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleInlineImageFile(f); e.target.value = ''; }} />
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleInlineFile(f); e.target.value = ''; }} />
 
-        {/* ── Revelar imagen ── */}
-        <button
-          type="button"
-          title="Revelar imagen: el lector toca para ver la imagen en modal"
+        {/* Revelar imagen */}
+        <button type="button" title="Insertar escena visual interactiva"
           onMouseDown={(e) => {
             e.preventDefault();
             captureRange();
-            setShowRevealVideo(false);
-            setShowRevealImage((v) => !v);
-          }}
-          disabled={uploadingInline || uploadingReveal}
-          className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium border transition-colors disabled:opacity-50 ${
-            showRevealImage
-              ? 'bg-primary/20 text-primary border-primary/40'
-              : 'text-primary bg-primary/10 hover:bg-primary/20 border-primary/20'
-          }`}
-        >
-          <Eye size={12} /> Revelar imagen
-        </button>
-
-        {/* ── Revelar video ── */}
-        <button
-          type="button"
-          title="Revelar video: el lector toca para ver el video en modal"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            captureRange();
-            setShowRevealImage(false);
-            setShowRevealVideo((v) => !v);
+            setPopover(popover?.phase === 'label' && popover.mediaType === 'image' ? null : { phase: 'label', mediaType: 'image' });
           }}
           className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium border transition-colors ${
-            showRevealVideo
-              ? 'bg-primary/20 text-primary border-primary/40'
-              : 'text-primary bg-primary/10 hover:bg-primary/20 border-primary/20'
+            popover?.mediaType === 'image' ? 'bg-primary/20 text-primary border-primary/50' : 'text-primary bg-primary/10 hover:bg-primary/20 border-primary/20'
           }`}
         >
-          <Play size={12} /> Revelar video
+          <ImageIcon size={12} className="opacity-70" /> Revelar imagen
+        </button>
+
+        {/* Revelar video */}
+        <button type="button" title="Insertar escena de video interactiva"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            captureRange();
+            setPopover(popover?.phase === 'label' && popover.mediaType === 'video' ? null : { phase: 'label', mediaType: 'video' });
+          }}
+          className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium border transition-colors ${
+            popover?.mediaType === 'video' ? 'bg-primary/20 text-primary border-primary/50' : 'text-primary bg-primary/10 hover:bg-primary/20 border-primary/20'
+          }`}
+        >
+          <Play size={12} className="opacity-70" /> Revelar video
         </button>
 
         <div className="w-px h-5 bg-border mx-1" />
@@ -318,77 +355,10 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
         </button>
       </div>
 
-      {/* ── Revelar imagen config bar ── */}
-      {showRevealImage && (
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-primary/5">
-          <Eye size={12} className="text-primary flex-shrink-0" />
-          <span className="text-xs text-muted-foreground flex-shrink-0">Texto del botón:</span>
-          <select
-            value={revealImageLabel}
-            onChange={(e) => setRevealImageLabel(e.target.value)}
-            className="bg-surface border border-border text-foreground text-xs rounded-md px-2 py-1 focus:outline-none focus:border-primary/60"
-          >
-            {IMAGE_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
-          <label
-            className={`flex items-center gap-1.5 px-3 py-1 text-xs font-medium bg-primary text-noir rounded-md cursor-pointer transition-all ${uploadingReveal ? 'opacity-50 pointer-events-none' : 'hover:bg-primary/90'}`}
-          >
-            {uploadingReveal ? <><Loader2 size={11} className="animate-spin" /> Subiendo…</> : 'Subir imagen'}
-            <input type="file" accept="image/*" className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRevealImageFile(f, revealImageLabel); e.target.value = ''; }} />
-          </label>
-          <button type="button" onClick={() => setShowRevealImage(false)}
-            className="p-1 text-muted-foreground hover:text-foreground transition-colors ml-auto">
-            <X size={12} />
-          </button>
-        </div>
-      )}
-
-      {/* ── Revelar video config bar ── */}
-      {showRevealVideo && (
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-primary/5">
-          <Play size={12} className="text-primary flex-shrink-0" />
-          <select
-            value={revealVideoLabel}
-            onChange={(e) => setRevealVideoLabel(e.target.value)}
-            className="bg-surface border border-border text-foreground text-xs rounded-md px-2 py-1 focus:outline-none focus:border-primary/60 flex-shrink-0"
-          >
-            {VIDEO_LABELS.map((l) => <option key={l} value={l}>{l}</option>)}
-          </select>
-          <input
-            type="url"
-            value={videoUrl}
-            onChange={(e) => setVideoUrl(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') { e.preventDefault(); handleInsertVideo(); }
-              if (e.key === 'Escape') { setShowRevealVideo(false); setVideoUrl(''); }
-            }}
-            placeholder="Pega URL de YouTube, Vimeo o video directo…"
-            className="flex-1 bg-transparent text-xs text-foreground placeholder-muted-foreground/50 outline-none"
-            autoFocus
-          />
-          <button
-            type="button"
-            onClick={handleInsertVideo}
-            disabled={!videoUrl.trim()}
-            className="px-2.5 py-1 text-xs font-medium bg-primary text-noir rounded-md disabled:opacity-40 transition-all"
-          >
-            Insertar
-          </button>
-          <button type="button" onClick={() => { setShowRevealVideo(false); setVideoUrl(''); }}
-            className="p-1 text-muted-foreground hover:text-foreground transition-colors">
-            <X size={12} />
-          </button>
-        </div>
-      )}
-
       {/* Editor */}
       <div className="relative" style={{ minHeight }}>
         {isEmpty && (
-          <div
-            className="absolute top-6 left-6 text-muted-foreground/40 pointer-events-none font-serif text-lg select-none"
-            style={{ lineHeight: '1.9' }}
-          >
+          <div className="absolute top-6 left-6 text-muted-foreground/40 pointer-events-none font-serif text-lg select-none" style={{ lineHeight: '1.9' }}>
             {placeholder || 'Escribe el contenido del capítulo...'}
           </div>
         )}
@@ -398,15 +368,142 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
           suppressContentEditableWarning
           onInput={notify}
           onKeyDown={(e) => {
-            if (e.key === 'Tab') {
-              e.preventDefault();
-              document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;');
-            }
+            if (e.key === 'Tab') { e.preventDefault(); document.execCommand('insertHTML', false, '&nbsp;&nbsp;&nbsp;&nbsp;'); }
           }}
           className="p-6 text-foreground font-serif text-lg leading-relaxed focus:outline-none prose-chapter"
           style={{ minHeight, lineHeight: '1.9' }}
         />
       </div>
+
+      {/* ── Hover block toolbar ───────────────────────────────────────────────── */}
+      {hoverBlock && (
+        <div
+          className="absolute z-30 flex items-center gap-0.5 bg-[#1A1614] border border-[#2E2420] rounded-lg shadow-xl px-1 py-1"
+          style={{ top: hoverBlock.top, left: hoverBlock.left }}
+          onMouseEnter={() => { if (hoverLeaveTimer.current) clearTimeout(hoverLeaveTimer.current); }}
+          onMouseLeave={() => { hoverLeaveTimer.current = setTimeout(() => setHoverBlock(null), 150); }}
+        >
+          <button type="button" onClick={handleHoverEditLabel} title="Cambiar texto"
+            className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-[#C9A96E] hover:bg-white/5 rounded-md transition-colors">
+            <Pencil size={10} /> Texto
+          </button>
+          <button type="button" onClick={handleHoverReplace} title="Reemplazar media"
+            className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-[#C9A96E] hover:bg-white/5 rounded-md transition-colors">
+            <RefreshCw size={10} /> Cambiar
+          </button>
+          <button type="button" onClick={handleHoverDelete} title="Eliminar bloque"
+            className="flex items-center gap-1 px-2 py-1 text-[10px] text-muted-foreground hover:text-rose-400 hover:bg-rose-400/10 rounded-md transition-colors">
+            <Trash2 size={10} /> Eliminar
+          </button>
+        </div>
+      )}
+
+      {/* ── Narrative insertion popover ───────────────────────────────────────── */}
+      {popover && (
+        <>
+          {/* Backdrop */}
+          <div className="fixed inset-0 z-40" onClick={() => { setPopover(null); setVideoUrl(''); }} />
+          {/* Card */}
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-80 bg-[#1A1614] border border-[#2E2420] rounded-2xl shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <div>
+                <p className="text-[10px] text-[#C9A96E] uppercase tracking-widest font-semibold mb-0.5">
+                  {popover.mediaType === 'image' ? 'Escena visual' : 'Escena de video'}
+                </p>
+                <p className="text-sm font-display font-semibold text-[#F5EFE6]">
+                  {popover.phase === 'label' ? '¿Cómo llamar esta escena?' : popover.mediaType === 'image' ? 'Sube la imagen' : 'Pega el enlace'}
+                </p>
+              </div>
+              <button type="button" onClick={() => { setPopover(null); setVideoUrl(''); }}
+                className="p-1.5 text-[#9A8A7A] hover:text-[#F5EFE6] transition-colors rounded-lg hover:bg-white/5">
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="px-5 pb-5">
+              {/* Phase: label selection */}
+              {popover.phase === 'label' && (
+                <>
+                  <p className="text-xs text-[#9A8A7A] mb-3">El lector verá este texto como botón para revelar la escena.</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(popover.mediaType === 'image' ? IMAGE_LABELS : VIDEO_LABELS).map((l) => (
+                      <button
+                        key={l}
+                        type="button"
+                        onClick={() => setPopover(popover.mediaType === 'image'
+                          ? { phase: 'upload', label: l, target: (popover as any).target }
+                          : { phase: 'url', label: l, target: (popover as any).target }
+                        )}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl border border-[#2E2420] text-xs font-medium text-[#C9A96E] hover:border-[#C9A96E]/40 hover:bg-[#C9A96E]/8 transition-all text-center"
+                      >
+                        {popover.mediaType === 'image' ? '✦' : '▶'} {l}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Phase: image upload */}
+              {popover.phase === 'upload' && (
+                <>
+                  <div className="flex items-center gap-2 mb-4 p-2.5 rounded-xl bg-[#C9A96E]/8 border border-[#C9A96E]/20">
+                    <span className="text-xs text-[#C9A96E]">✦</span>
+                    <span className="text-sm font-display font-medium text-[#C9A96E]">{popover.label}</span>
+                  </div>
+                  <label className={`flex flex-col items-center gap-2 px-4 py-6 rounded-xl border-2 border-dashed cursor-pointer transition-all ${uploading ? 'border-primary/40 bg-primary/5' : 'border-[#2E2420] hover:border-[#C9A96E]/40 hover:bg-[#C9A96E]/5'}`}>
+                    {uploading
+                      ? <><Loader2 size={20} className="animate-spin text-[#C9A96E]" /><span className="text-xs text-[#9A8A7A]">Subiendo imagen…</span></>
+                      : <><ImageIcon size={20} className="text-[#C9A96E]/60" /><span className="text-xs text-[#9A8A7A]">Toca para elegir imagen</span><span className="text-[10px] text-[#9A8A7A]/60">JPG, PNG, WebP — máx. 5 MB</span></>
+                    }
+                    <input ref={revealFileRef} type="file" accept="image/*" className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRevealUpload(f); e.target.value = ''; }} />
+                  </label>
+                  <button type="button" onClick={() => setPopover({ phase: 'label', mediaType: 'image', target: (popover as any).target })}
+                    className="mt-3 text-xs text-[#9A8A7A] hover:text-[#F5EFE6] transition-colors">
+                    ← Cambiar texto del botón
+                  </button>
+                </>
+              )}
+
+              {/* Phase: video URL */}
+              {popover.phase === 'url' && (
+                <>
+                  <div className="flex items-center gap-2 mb-4 p-2.5 rounded-xl bg-[#C9A96E]/8 border border-[#C9A96E]/20">
+                    <span className="text-xs text-[#C9A96E]">▶</span>
+                    <span className="text-sm font-display font-medium text-[#C9A96E]">{popover.label}</span>
+                  </div>
+                  <input
+                    type="url"
+                    value={videoUrl}
+                    onChange={(e) => setVideoUrl(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleRevealVideoInsert(); } }}
+                    placeholder="YouTube, Vimeo o enlace directo…"
+                    className="w-full bg-[#0D0B0A] border border-[#2E2420] rounded-xl px-3 py-2.5 text-sm text-[#F5EFE6] placeholder-[#9A8A7A]/50 outline-none focus:border-[#C9A96E]/40 transition-colors"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRevealVideoInsert}
+                    disabled={!videoUrl.trim()}
+                    className="mt-3 w-full py-2.5 text-sm font-semibold bg-primary text-noir rounded-xl disabled:opacity-40 hover:bg-primary/90 transition-all"
+                  >
+                    Insertar escena
+                  </button>
+                  <button type="button" onClick={() => setPopover({ phase: 'label', mediaType: 'video', target: (popover as any).target })}
+                    className="mt-2 text-xs text-[#9A8A7A] hover:text-[#F5EFE6] transition-colors">
+                    ← Cambiar texto del botón
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Hidden inline file input */}
+      <input ref={inlineFileRef} type="file" accept="image/*" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleInlineFile(f); e.target.value = ''; }} />
 
       <style jsx global>{`
         .prose-chapter p { margin: 0.75rem 0; }
@@ -427,18 +524,24 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
         .ch-reveal-block, .ch-media-block {
           display: block;
           width: fit-content;
-          margin: 1.25rem auto;
-          padding: 0.45rem 1.5rem;
-          border: 1px solid rgba(201,169,110,0.35);
+          max-width: 260px;
+          margin: 1.5rem auto;
+          padding: 0.5rem 1.75rem;
+          border: 1px solid rgba(201,169,110,0.3);
           border-radius: 999px;
           color: #C9A96E;
-          font-size: 0.78rem;
-          letter-spacing: 0.07em;
+          font-size: 0.75rem;
+          letter-spacing: 0.1em;
           text-align: center;
-          cursor: default;
           user-select: none;
-          background: rgba(201,169,110,0.05);
-          font-family: var(--font-display, sans-serif);
+          background: rgba(201,169,110,0.04);
+          font-family: var(--font-display, serif);
+          position: relative;
+        }
+        .ch-reveal-block::before, .ch-media-block::before {
+          content: '✦ ';
+          opacity: 0.5;
+          font-size: 0.6rem;
         }
       `}</style>
     </div>
