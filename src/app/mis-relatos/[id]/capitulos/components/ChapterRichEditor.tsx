@@ -31,6 +31,7 @@ const VIDEO_LABELS = ['Ver video', 'Ver escena', 'Ver clip'];
 // Popover state machine
 type Popover =
   | null
+  | { phase: 'scene-choice' }
   | { phase: 'label'; mediaType: 'image' | 'video'; target?: HTMLElement }
   | { phase: 'upload'; label: string; target?: HTMLElement }
   | { phase: 'url'; label: string; target?: HTMLElement };
@@ -306,43 +307,47 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        {/* Imagen visible */}
-        <button type="button" title="Imagen visible: aparece directamente en el texto"
+        {/* Insertar imagen (inline) */}
+        <button type="button" title="Insertar imagen directamente en el texto"
           onMouseDown={(e) => { e.preventDefault(); captureRange(); inlineFileRef.current?.click(); }}
           disabled={uploading}
           className="flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-muted-foreground bg-white/5 hover:bg-white/10 border border-border transition-colors disabled:opacity-50"
         >
-          {uploading ? <><Loader2 size={12} className="animate-spin" /> Subiendo…</> : <><ImageIcon size={12} /> Imagen</>}
+          {uploading ? <><Loader2 size={12} className="animate-spin" /> Subiendo…</> : <><ImageIcon size={12} /> Insertar imagen</>}
         </button>
         <input ref={inlineFileRef} type="file" accept="image/*" className="hidden"
           onChange={(e) => { const f = e.target.files?.[0]; if (f) handleInlineFile(f); e.target.value = ''; }} />
 
-        {/* Revelar imagen */}
-        <button type="button" title="Insertar escena visual interactiva"
+        {/* Insertar escena */}
+        <button type="button" title="Insertar escena visual"
           onMouseDown={(e) => {
             e.preventDefault();
             captureRange();
-            setPopover(popover?.phase === 'label' && popover.mediaType === 'image' ? null : { phase: 'label', mediaType: 'image' });
+            setPopover(popover?.phase === 'scene-choice' ? null : { phase: 'scene-choice' });
           }}
           className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium border transition-colors ${
-            popover?.mediaType === 'image' ? 'bg-primary/20 text-primary border-primary/50' : 'text-primary bg-primary/10 hover:bg-primary/20 border-primary/20'
+            popover !== null && (popover.phase === 'scene-choice' || (popover as any).mediaType === 'image')
+              ? 'bg-primary/20 text-primary border-primary/50'
+              : 'text-primary bg-primary/10 hover:bg-primary/20 border-primary/20'
           }`}
         >
-          <ImageIcon size={12} className="opacity-70" /> Revelar imagen
+          <ImageIcon size={12} className="opacity-70" /> Insertar escena
         </button>
 
-        {/* Revelar video */}
+        {/* Insertar video */}
         <button type="button" title="Insertar escena de video interactiva"
           onMouseDown={(e) => {
             e.preventDefault();
             captureRange();
-            setPopover(popover?.phase === 'label' && popover.mediaType === 'video' ? null : { phase: 'label', mediaType: 'video' });
+            setPopover(popover !== null && popover.phase !== 'scene-choice' && (popover as any).mediaType === 'video' ? null : { phase: 'label', mediaType: 'video' });
           }}
           className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium border transition-colors ${
-            popover?.mediaType === 'video' ? 'bg-primary/20 text-primary border-primary/50' : 'text-primary bg-primary/10 hover:bg-primary/20 border-primary/20'
+            popover !== null && popover.phase !== 'scene-choice' && (popover as any).mediaType === 'video'
+              ? 'bg-primary/20 text-primary border-primary/50'
+              : 'text-primary bg-primary/10 hover:bg-primary/20 border-primary/20'
           }`}
         >
-          <Play size={12} className="opacity-70" /> Revelar video
+          <Play size={12} className="opacity-70" /> Insertar video
         </button>
 
         <div className="w-px h-5 bg-border mx-1" />
@@ -409,10 +414,16 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
             <div className="flex items-center justify-between px-5 pt-5 pb-3">
               <div>
                 <p className="text-[10px] text-[#C9A96E] uppercase tracking-widest font-semibold mb-0.5">
-                  {popover.mediaType === 'image' ? 'Escena visual' : 'Escena de video'}
+                  {popover.phase === 'scene-choice' || (popover as any).mediaType === 'image' ? 'Escena visual' : 'Escena de video'}
                 </p>
                 <p className="text-sm font-display font-semibold text-[#F5EFE6]">
-                  {popover.phase === 'label' ? '¿Cómo llamar esta escena?' : popover.mediaType === 'image' ? 'Sube la imagen' : 'Pega el enlace'}
+                  {popover.phase === 'scene-choice'
+                    ? 'Insertar escena'
+                    : popover.phase === 'label'
+                      ? '¿Cómo llamar esta escena?'
+                      : (popover as any).mediaType === 'image'
+                        ? 'Sube la imagen'
+                        : 'Pega el enlace'}
                 </p>
               </div>
               <button type="button" onClick={() => { setPopover(null); setVideoUrl(''); }}
@@ -422,6 +433,37 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
             </div>
 
             <div className="px-5 pb-5">
+              {/* Phase: scene-choice */}
+              {popover.phase === 'scene-choice' && (
+                <>
+                  <p className="text-xs text-[#9A8A7A] mb-4">¿Cómo quieres mostrarla?</p>
+                  <div className="flex flex-col gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => { setPopover(null); setTimeout(() => inlineFileRef.current?.click(), 0); }}
+                      className="flex items-start gap-3 p-3 rounded-xl border border-[#2E2420] hover:border-[#C9A96E]/30 hover:bg-[#C9A96E]/5 transition-all text-left"
+                    >
+                      <span className="text-base leading-none mt-0.5 opacity-70">🖼</span>
+                      <div>
+                        <p className="text-sm font-medium text-[#F5EFE6]">Visible en el texto</p>
+                        <p className="text-[11px] text-[#9A8A7A] mt-0.5">La imagen aparece directamente en la historia</p>
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPopover({ phase: 'label', mediaType: 'image' })}
+                      className="flex items-start gap-3 p-3 rounded-xl border border-[#2E2420] hover:border-[#C9A96E]/30 hover:bg-[#C9A96E]/5 transition-all text-left"
+                    >
+                      <span className="text-base leading-none mt-0.5 text-[#C9A96E]">✦</span>
+                      <div>
+                        <p className="text-sm font-medium text-[#F5EFE6]">Interactiva <span className="text-[#C9A96E] font-normal text-xs">"Ver imagen"</span></p>
+                        <p className="text-[11px] text-[#9A8A7A] mt-0.5">El lector toca un botón para revelarla</p>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
+
               {/* Phase: label selection */}
               {popover.phase === 'label' && (
                 <>
@@ -500,10 +542,6 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
           </div>
         </>
       )}
-
-      {/* Hidden inline file input */}
-      <input ref={inlineFileRef} type="file" accept="image/*" className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleInlineFile(f); e.target.value = ''; }} />
 
       <style jsx global>{`
         .prose-chapter p { margin: 0.75rem 0; }
