@@ -1,3 +1,4 @@
+import { notFound } from 'next/navigation';
 import { redirect } from 'next/navigation';
 import { getRelatoBySlug, getPublishedCapitulosByRelatoId } from '@/lib/supabase/queries';
 import HistoriaIndexClient from './components/HistoriaIndexClient';
@@ -9,20 +10,25 @@ interface Props {
 export default async function HistoriaPage({ params }: Props) {
   const { slug } = await params;
 
+  console.log('[HistoriaPage] slug:', slug);
+
   const story = await getRelatoBySlug(slug);
 
-  // Unknown slug: redirect to library
+  console.log('[HistoriaPage] story?.id:', story?.id ?? 'NOT FOUND');
+
   if (!story) {
-    redirect('/stories-library');
+    notFound();
   }
 
   const capitulos = await getPublishedCapitulosByRelatoId(story.id);
 
-  // No chapters at all → fall back to the immersive reader
-  if (!story.hasChapters) {
+  console.log('[HistoriaPage] capítulos publicados encontrados:', capitulos.length);
+
+  // Relato without the chapters feature → immersive reader
+  if (story.hasChapters === false) {
     redirect(`/immersive-reading-mode?id=${story.id}`);
   }
 
-  // Story has chapters but none published yet → show empty state (not a redirect)
+  // Show index page — HistoriaIndexClient handles the 0-chapters empty state
   return <HistoriaIndexClient story={story} capitulos={capitulos} />;
 }
