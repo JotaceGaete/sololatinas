@@ -119,7 +119,7 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
     } else {
       setSaveStatus('saved');
       setEstado('draft');
-      toast.success('Borrador guardado');
+      toast.success('Cambios guardados');
       onUpdated({ ...capitulo, titulo: titulo.trim(), cuerpo, extracto: '' });
     }
   }, [titulo, cuerpo, capitulo, supabase, onUpdated]);
@@ -189,7 +189,7 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
       {/* Chapter label + status badge */}
       <div className="flex items-center justify-between">
         <p className="text-xs font-semibold text-primary uppercase tracking-widest">
-          Capítulo {capitulo.numero}
+          Editando capítulo {capitulo.numero}
         </p>
         <div className="flex items-center gap-2">
           <SaveBadge status={saveStatus} />
@@ -262,7 +262,7 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
                 disabled={saveStatus === 'saving'}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-primary/5 rounded-lg transition-all disabled:opacity-50"
               >
-                <Save size={11} /> Guardar borrador
+                <Save size={11} /> Guardar cambios
               </button>
 
               {/* Publish */}
