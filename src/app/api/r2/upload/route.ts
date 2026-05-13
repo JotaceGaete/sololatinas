@@ -45,6 +45,7 @@ export async function POST(request: Request) {
   const formData = await request.formData();
   const file = formData.get('file');
   const userId = String(formData.get('userId') ?? 'anonymous').replace(/[^a-zA-Z0-9_-]/g, '');
+  const folder = String(formData.get('folder') ?? 'covers').replace(/[^a-zA-Z0-9_-]/g, '') || 'covers';
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: 'Missing file' }, { status: 400 });
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
   const dateStamp = amzDate.slice(0, 8);
   const region = 'auto';
   const service = 's3';
-  const key = `covers/${userId || 'anonymous'}/${Date.now()}.${extensionFrom(file)}`;
+  const key = `${folder}/${userId || 'anonymous'}/${Date.now()}.${extensionFrom(file)}`;
   const url = new URL(`${endpoint}/${bucket}/${encodePath(key)}`);
   const payloadHash = sha256Hex(body);
   const host = url.host;

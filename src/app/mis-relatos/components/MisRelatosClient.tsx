@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { PenLine, BookOpen, Eye, Heart, Clock, Globe, Archive, MoreVertical, Edit3, Trash2, Send, FileText, Plus, ChevronDown, Search, MessageCircle, Layers } from 'lucide-react';
-import CapitulosEditor from '@/components/chapters/CapitulosEditor';
 import Icon from '@/components/ui/AppIcon';
 
 
@@ -85,7 +84,6 @@ function StoryRow({
   onPublish,
 }: {relato: Relato;onDelete: (id: string) => void;onPublish: (id: string) => void;}) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showCapitulos, setShowCapitulos] = useState(false);
   const cfg = STATUS_CONFIG[relato.estado];
   const StatusIcon = cfg.icon;
 
@@ -226,26 +224,15 @@ function StoryRow({
       </div>
     </div>
 
-      {/* Capítulos toggle button */}
+      {/* Chapters link */}
       <div className="border-t border-border px-5 py-2">
-        <button
-          onClick={() => setShowCapitulos((v) => !v)}
+        <Link
+          href={`/mis-relatos/${relato.id}/capitulos`}
           className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
         >
-          <Layers size={12} />
-          {showCapitulos ? 'Ocultar capítulos' : 'Gestionar capítulos'}
-        </button>
+          <Layers size={12} /> Escribir capítulos →
+        </Link>
       </div>
-
-      {/* Capítulos editor (expanded) */}
-      {showCapitulos && (
-        <div className="border-t border-border px-5 py-4">
-          <CapitulosEditor
-            relatoId={relato.id}
-            relatoSlug={relato.slug ?? ''}
-          />
-        </div>
-      )}
     </div>);
 
 }
