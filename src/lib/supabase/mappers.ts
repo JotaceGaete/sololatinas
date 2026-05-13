@@ -1,4 +1,4 @@
-import type { Author, Story, StoryStatus } from '@/lib/stories/types';
+import type { Author, Capitulo, CapituloMediaBlock, MediaBlockType, Story, StoryStatus } from '@/lib/stories/types';
 import { PUBLIC_STORY_STATUSES, STORY_STATUS } from '@/lib/stories/types';
 
 export interface SupabaseRelato {
@@ -40,6 +40,30 @@ export interface SupabaseRelato {
     country: string | null;
     bio: string | null;
   } | null;
+}
+
+export interface SupabaseCapitulo {
+  id: string;
+  relato_id: string;
+  numero: number;
+  titulo: string;
+  cuerpo: string;
+  extracto: string;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+  media_blocks?: SupabaseMediaBlock[];
+}
+
+export interface SupabaseMediaBlock {
+  id: string;
+  capitulo_id: string;
+  tipo: string;
+  url: string;
+  alt: string;
+  caption: string;
+  posicion: number;
+  created_at: string;
 }
 
 export interface SupabaseProfile {
@@ -105,14 +129,16 @@ export function getSafeStoryImage(url: string | null | undefined): string {
   return url?.trim() || '/assets/images/no_image.png';
 }
 
-export function mapRelatoToStory(r: SupabaseRelato): Story {
+export function mapRelatoToStory(r: SupabaseRelato & { chapter_count?: number }): Story {
   const status = normalizeRelatoStatus(r);
-  const title = firstText(r.title, r.titulo, r.slug, 'Relato sin titulo');
+  const rawSlug = firstText(r.slug);
+  const title = firstText(r.title, r.titulo, rawSlug, 'Relato sin titulo');
   const excerpt = firstText(r.excerpt, r.resumen, r.extracto, r.content, r.cuerpo);
   const content = firstText(r.content, r.cuerpo, excerpt);
 
   return {
     id: r.id,
+    slug: rawSlug || r.id,
     title,
     author: r.autor?.full_name ?? r.author_name ?? r.autor_nombre ?? 'Autora',
     authorId: firstText(r.autor_id, r.author_id),
@@ -128,6 +154,33 @@ export function mapRelatoToStory(r: SupabaseRelato): Story {
     status,
     publishedAt: r.published_at ?? r.created_at,
     genre: firstText(r.categoria, 'Romance'),
+    hasChapters: typeof r.chapter_count === 'number' ? r.chapter_count > 0 : undefined,
+  };
+}
+
+export function mapCapituloToModel(c: SupabaseCapitulo): Capitulo {
+  return {
+    id: c.id,
+    relatoId: c.relato_id,
+    numero: c.numero,
+    titulo: c.titulo || '',
+    cuerpo: c.cuerpo || '',
+    extracto: c.extracto || '',
+    publishedAt: c.published_at,
+    createdAt: c.created_at,
+    mediaBlocks: (c.media_blocks ?? []).map(mapMediaBlock),
+  };
+}
+
+export function mapMediaBlock(b: SupabaseMediaBlock): CapituloMediaBlock {
+  return {
+    id: b.id,
+    capituloId: b.capitulo_id,
+    tipo: b.tipo as MediaBlockType,
+    url: b.url || '',
+    alt: b.alt || '',
+    caption: b.caption || '',
+    posicion: b.posicion,
   };
 }
 

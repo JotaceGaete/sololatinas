@@ -1,10 +1,10 @@
 import { createClient } from './server';
-import type { Author, Story } from '@/lib/stories/types';
-import { isPublishedRelato, mapRelatoToStory, mapProfileToAuthor } from './mappers';
-import type { SupabaseRelato, SupabaseProfile } from './mappers';
+import type { Author, Capitulo, Story } from '@/lib/stories/types';
+import { isPublishedRelato, mapCapituloToModel, mapRelatoToStory, mapProfileToAuthor } from './mappers';
+import type { SupabaseCapitulo, SupabaseRelato, SupabaseProfile } from './mappers';
 
-export type { SupabaseRelato, SupabaseProfile };
-export { mapRelatoToStory, mapProfileToAuthor };
+export type { SupabaseCapitulo, SupabaseRelato, SupabaseProfile };
+export { mapRelatoToStory, mapCapituloToModel, mapProfileToAuthor };
 
 // ─── Server-side queries (for async server components / page.tsx) ──────────────
 
@@ -42,6 +42,55 @@ export async function getPublishedStories(): Promise<Story[]> {
   } catch (e) {
     console.error('[getPublishedStories] unexpected error:', e);
     return [];
+  }
+}
+
+export async function getRelatoBySlug(slug: string): Promise<Story | null> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('relatos')
+      .select('*')
+      .eq('slug', slug)
+      .maybeSingle();
+    if (error || !data) return null;
+    return mapRelatoToStory(data as SupabaseRelato);
+  } catch {
+    return null;
+  }
+}
+
+export async function getCapitulosByRelatoId(relatoId: string): Promise<Capitulo[]> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('historia_capitulos')
+      .select('*, media_blocks:capitulo_media_blocks(*)')
+      .eq('relato_id', relatoId)
+      .order('numero', { ascending: true });
+    if (error) {
+      console.error('[getCapitulosByRelatoId] error:', error.message, error.details);
+      return [];
+    }
+    return ((data ?? []) as SupabaseCapitulo[]).map(mapCapituloToModel);
+  } catch {
+    return [];
+  }
+}
+
+export async function getCapituloByNumero(relatoId: string, numero: number): Promise<Capitulo | null> {
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from('historia_capitulos')
+      .select('*, media_blocks:capitulo_media_blocks(*)')
+      .eq('relato_id', relatoId)
+      .eq('numero', numero)
+      .maybeSingle();
+    if (error || !data) return null;
+    return mapCapituloToModel(data as SupabaseCapitulo);
+  } catch {
+    return null;
   }
 }
 

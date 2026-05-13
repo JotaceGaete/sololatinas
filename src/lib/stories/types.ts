@@ -15,6 +15,7 @@ export const PUBLIC_STORY_STATUSES: StoryStatus[] = [
 
 export interface Story {
   id: string;
+  slug: string;
   title: string;
   author: string;
   authorId: string;
@@ -30,6 +31,7 @@ export interface Story {
   status: StoryStatus;
   publishedAt: string;
   genre: string;
+  hasChapters?: boolean;
 }
 
 export interface Author {
@@ -43,4 +45,28 @@ export interface Author {
   tags: string[];
   joinedAt: string;
   featured: boolean;
+}
+
+export type MediaBlockType = 'imagen' | 'video' | 'audio' | 'separador';
+
+export interface CapituloMediaBlock {
+  id: string;
+  capituloId: string;
+  tipo: MediaBlockType;
+  url: string;
+  alt: string;
+  caption: string;
+  posicion: number;
+}
+
+export interface Capitulo {
+  id: string;
+  relatoId: string;
+  numero: number;
+  titulo: string;
+  cuerpo: string;
+  extracto: string;
+  publishedAt: string | null;
+  createdAt: string;
+  mediaBlocks?: CapituloMediaBlock[];
 }
