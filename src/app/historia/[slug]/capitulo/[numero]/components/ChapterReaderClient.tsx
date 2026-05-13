@@ -109,7 +109,21 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
   }, [currentPage]);
 
   const pages = useMemo(
-    () => splitIntoPages(capitulo.cuerpo, WORDS_TARGET, WORDS_MIN, WORDS_MAX),
+    () => {
+      const result = splitIntoPages(capitulo.cuerpo, WORDS_TARGET, WORDS_MIN, WORDS_MAX);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ChapterReader] chapter html snippet:', capitulo.cuerpo.slice(0, 500));
+        console.log('[ChapterReader] pages count:', result.length);
+        console.log('[ChapterReader] page[0] snippet:', result[0]?.slice(0, 500));
+        const hasMediaBlock = capitulo.cuerpo.includes('ch-media-block');
+        console.log('[ChapterReader] has ch-media-block in cuerpo:', hasMediaBlock);
+        if (hasMediaBlock) {
+          const match = capitulo.cuerpo.match(/<div[^>]*ch-media-block[^>]*>/);
+          console.log('[ChapterReader] media block tag:', match?.[0]);
+        }
+      }
+      return result;
+    },
     [capitulo.cuerpo],
   );
   const totalPages = pages.length;
@@ -135,7 +149,7 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
         .ch-content figure { margin: 2rem 0; border-radius: 0.75rem; overflow: hidden; }
         .ch-content figure img { width: 100%; display: block; border-radius: 0.75rem; }
         .ch-content figcaption { font-size: 0.78rem; color: #9A8A7A; text-align: center; padding: 0.5rem 0.75rem; font-style: italic; }
-        .ch-content .ch-media-block {
+        .ch-media-block {
           display: block;
           width: fit-content;
           margin: 1.75rem auto;
@@ -151,7 +165,7 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
           background: rgba(201,169,110,0.04);
           transition: background 0.15s, border-color 0.15s, transform 0.1s;
         }
-        .ch-content .ch-media-block:hover {
+        .ch-media-block:hover {
           background: rgba(201,169,110,0.10);
           border-color: rgba(201,169,110,0.6);
           transform: scale(1.02);

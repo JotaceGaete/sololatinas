@@ -25,17 +25,11 @@ const HEADING_OPTIONS = [
   { label: 'Título 3', tag: 'h3' },
 ];
 
-function buildMediaBlock(type: 'image' | 'video', url: string): string {
-  const label = type === 'image' ? '📷 Ver imagen' : '▶ Ver video';
-  return `<div class="ch-media-block" data-media-type="${type}" data-media-url="${url}" contenteditable="false">${label}</div><p></p>`;
-}
-
 export default function ChapterRichEditor({ value, onChange, placeholder, userId, minHeight = 500 }: Props) {
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalUpdate = useRef(false);
   const savedRange = useRef<Range | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [showVideoInput, setShowVideoInput] = useState(false);
   const [videoUrl, setVideoUrl] = useState('');
@@ -83,6 +77,58 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
     notify();
   }, [notify]);
 
+  // Direct DOM insertion for media blocks — avoids execCommand sanitizing data-* attributes
+  const insertMediaBlock = useCallback((type: 'image' | 'video', url: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+
+    const label = type === 'image' ? '📷 Ver imagen' : '▶ Ver video';
+
+    // Build the block element directly so data-* attrs are never stripped
+    const block = document.createElement('div');
+    block.className = 'ch-media-block';
+    block.setAttribute('data-media-type', type);
+    block.setAttribute('data-media-url', url);
+    block.setAttribute('contenteditable', 'false');
+    block.textContent = label;
+
+    const gap = document.createElement('p');
+    gap.appendChild(document.createElement('br'));
+
+    // Find the nearest block-level ancestor inside the editor to insert after
+    const sel = window.getSelection();
+    let anchorBlock: Element | null = null;
+
+    if (savedRange.current || (sel && sel.rangeCount > 0)) {
+      const range = savedRange.current ?? sel!.getRangeAt(0);
+      let node: Node | null = range.commonAncestorContainer;
+      // Walk up until we find a direct child of the editor
+      while (node && node.parentNode !== editor) {
+        node = node.parentNode;
+      }
+      if (node && node !== editor) anchorBlock = node as Element;
+    }
+
+    if (anchorBlock) {
+      anchorBlock.after(block, gap);
+    } else {
+      editor.appendChild(block);
+      editor.appendChild(gap);
+    }
+
+    // Move cursor into the gap paragraph
+    const newRange = document.createRange();
+    newRange.setStart(gap, 0);
+    newRange.collapse(true);
+    if (sel) {
+      sel.removeAllRanges();
+      sel.addRange(newRange);
+    }
+
+    notify();
+  }, [notify]);
+
   const handleImageFile = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
     setUploadingImage(true);
@@ -115,21 +161,21 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
       const res = await fetch('/api/r2/upload', { method: 'POST', body });
       if (!res.ok) throw new Error('Upload failed');
       const { publicUrl } = await res.json();
-      insertHtmlAtSaved(buildMediaBlock('image', publicUrl));
+      insertMediaBlock('image', publicUrl);
     } catch (err: any) {
       toast.error('Error al subir imagen: ' + (err?.message ?? 'Verifica la configuración de R2'));
     } finally {
       setUploadingImage(false);
     }
-  }, [userId, insertHtmlAtSaved]);
+  }, [userId, insertMediaBlock]);
 
   const handleInsertVideo = useCallback(() => {
     const url = videoUrl.trim();
     if (!url) return;
-    insertHtmlAtSaved(buildMediaBlock('video', url));
+    insertMediaBlock('video', url);
     setVideoUrl('');
     setShowVideoInput(false);
-  }, [videoUrl, insertHtmlAtSaved]);
+  }, [videoUrl, insertMediaBlock]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -204,7 +250,7 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
 
         <div className="w-px h-5 bg-border mx-1" />
 
-        {/* Inline image (existing behavior — shows image in text) */}
+        {/* Inline image — renders directly in text */}
         <button
           type="button"
           title="Insertar imagen en el texto"
@@ -233,36 +279,29 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
           }}
         />
 
-        {/* Media reveal — "Ver imagen" block */}
-        <button
-          type="button"
-          title="Insertar bloque narrativo: Ver imagen (el lector lo abre en modal)"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            captureRange();
-            (document.getElementById('media-img-input') as HTMLInputElement)?.click();
-          }}
-          disabled={uploadingImage}
-          className="flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors disabled:opacity-50"
+        {/* Narrative "Ver imagen" block */}
+        <label
+          title="Insertar botón narrativo: Ver imagen (el lector abre en modal)"
+          className={`flex items-center gap-1.5 px-2.5 h-8 rounded-md text-xs font-medium text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors cursor-pointer ${uploadingImage ? 'opacity-50 pointer-events-none' : ''}`}
         >
           <ImageIcon size={12} /> Ver imagen
-        </button>
-        <input
-          id="media-img-input"
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handleMediaImageFile(f);
-            e.target.value = '';
-          }}
-        />
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              captureRange();
+              const f = e.target.files?.[0];
+              if (f) handleMediaImageFile(f);
+              e.target.value = '';
+            }}
+          />
+        </label>
 
-        {/* Media reveal — "Ver video" block */}
+        {/* Narrative "Ver video" block */}
         <button
           type="button"
-          title="Insertar bloque narrativo: Ver video (el lector lo abre en modal)"
+          title="Insertar botón narrativo: Ver video (el lector abre en modal)"
           onMouseDown={(e) => {
             e.preventDefault();
             captureRange();
@@ -288,7 +327,6 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-primary/5">
           <Play size={12} className="text-primary flex-shrink-0" />
           <input
-            ref={videoInputRef}
             type="url"
             value={videoUrl}
             onChange={(e) => setVideoUrl(e.target.value)}
