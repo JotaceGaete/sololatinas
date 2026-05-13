@@ -44,8 +44,8 @@ function SaveIndicator({ status }: { status: SaveStatus }) {
 export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDeleted }: Props) {
   const [titulo, setTitulo] = useState(capitulo.titulo);
   const [cuerpo, setCuerpo] = useState(capitulo.cuerpo);
-  const [estado, setEstado] = useState<'borrador' | 'publicado'>(
-    (capitulo as any).estado === 'publicado' ? 'publicado' : 'borrador'
+  const [estado, setEstado] = useState<'draft' | 'publicado'>(
+    (capitulo as any).estado === 'publicado' ? 'publicado' : 'draft'
   );
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -55,7 +55,7 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
   useEffect(() => {
     setTitulo(capitulo.titulo);
     setCuerpo(capitulo.cuerpo);
-    setEstado((capitulo as any).estado === 'publicado' ? 'publicado' : 'borrador');
+    setEstado((capitulo as any).estado === 'publicado' ? 'publicado' : 'draft');
     setSaveStatus('idle');
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
   }, [capitulo.id]);
@@ -90,7 +90,7 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
   };
 
   const handleEstadoToggle = async () => {
-    const next = estado === 'borrador' ? 'publicado' : 'borrador';
+    const next = estado === 'draft' ? 'publicado' : 'draft';
     setEstado(next);
     const { error } = await supabase
       .from('historia_capitulos')
@@ -170,7 +170,7 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
                 : 'bg-muted/30 text-muted-foreground border-border hover:border-primary/40 hover:text-primary'
             }`}
           >
-            {estado === 'publicado' ? '✓ Publicado' : '○ Borrador'}
+            {estado === 'publicado' ? '✓ publicado' : '○ borrador'}
           </button>
 
           {/* Delete */}

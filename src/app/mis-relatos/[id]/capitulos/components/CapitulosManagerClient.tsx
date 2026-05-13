@@ -33,7 +33,7 @@ export default function CapitulosManagerClient({ story, initialCapitulos, userId
         numero: nextNumero,
         titulo: '',
         cuerpo_html: '',
-        estado: 'borrador',
+        estado: 'draft',
       })
       .select()
       .single();

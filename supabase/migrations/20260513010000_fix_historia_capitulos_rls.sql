@@ -25,10 +25,11 @@ DROP POLICY IF EXISTS "author_delete_capitulos" ON public.historia_capitulos;
 CREATE POLICY "public_read_capitulos" ON public.historia_capitulos
   FOR SELECT TO public
   USING (
-    EXISTS (
+    estado = 'publicado'
+    AND EXISTS (
       SELECT 1 FROM public.relatos r
       WHERE r.id = historia_id
-        AND r.estado IN ('publicado', 'destacado', 'published', 'approved')
+        AND r.estado IN ('publicado', 'destacado')
     )
   );
 
@@ -100,7 +101,8 @@ CREATE POLICY "public_read_media_blocks" ON public.capitulo_media_blocks
       SELECT 1 FROM public.historia_capitulos hc
         JOIN public.relatos r ON r.id = hc.historia_id
       WHERE hc.id = capitulo_id
-        AND r.estado IN ('publicado', 'destacado', 'published', 'approved')
+        AND hc.estado = 'publicado'
+        AND r.estado IN ('publicado', 'destacado')
     )
   );
 
