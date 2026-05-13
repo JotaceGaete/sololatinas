@@ -97,17 +97,17 @@ export default function ImmersiveReaderClient() {
           .limit(5);
 
         if (relatoId) {
-          const [{ data: selected }, { data: relatedData }] = await Promise.all([
-            supabase
-              .from('relatos')
-              .select('*')
-              .eq('id', relatoId)
-              .maybeSingle(),
+          const [{ data: selected }, { data: relatedData }, { count: chapterCount }] = await Promise.all([
+            supabase.from('relatos').select('*').eq('id', relatoId).maybeSingle(),
             relatedQuery.neq('id', relatoId),
+            supabase.from('historia_capitulos').select('id', { count: 'exact', head: true }).eq('relato_id', relatoId),
           ]);
 
           const selectedRelato = selected as SupabaseRelato | null;
-          setStory(selectedRelato && isPublishedRelato(selectedRelato) ? mapRelatoToStory(selectedRelato) : null);
+          const mappedStory = selectedRelato && isPublishedRelato(selectedRelato)
+            ? mapRelatoToStory({ ...selectedRelato, chapter_count: chapterCount ?? 0 })
+            : null;
+          setStory(mappedStory);
           setRelated(((relatedData ?? []) as SupabaseRelato[]).filter(isPublishedRelato).map(mapRelatoToStory));
         } else {
           const { data } = await relatedQuery;
@@ -503,6 +503,21 @@ export default function ImmersiveReaderClient() {
                   className="object-cover"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+              </div>
+            )}
+
+            {/* Chapters banner — if this relato has chapters */}
+            {story.hasChapters && story.slug && (readingMode === 'scroll' || currentPage === 1) && (
+              <div className="mb-6 flex items-center justify-between gap-3 px-4 py-3 rounded-xl border border-[#C9A96E]/30 bg-[#C9A96E]/5">
+                <p className={`text-sm ${topBarMuted}`}>
+                  Este relato tiene capítulos — ver la historia completa.
+                </p>
+                <a
+                  href={`/historia/${story.slug}`}
+                  className="flex-shrink-0 text-xs font-semibold text-[#C9A96E] hover:text-[#E8C97A] transition-colors"
+                >
+                  Ver capítulos →
+                </a>
               </div>
             )}
 
