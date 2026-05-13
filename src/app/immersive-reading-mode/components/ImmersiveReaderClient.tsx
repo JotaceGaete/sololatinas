@@ -100,7 +100,7 @@ export default function ImmersiveReaderClient() {
           const [{ data: selected }, { data: relatedData }, { count: chapterCount }] = await Promise.all([
             supabase.from('relatos').select('*').eq('id', relatoId).maybeSingle(),
             relatedQuery.neq('id', relatoId),
-            supabase.from('historia_capitulos').select('id', { count: 'exact', head: true }).eq('relato_id', relatoId),
+            supabase.from('historia_capitulos').select('id', { count: 'exact', head: true }).eq('historia_id', relatoId),
           ]);
 
           const selectedRelato = selected as SupabaseRelato | null;

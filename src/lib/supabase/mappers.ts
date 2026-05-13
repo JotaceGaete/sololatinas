@@ -44,11 +44,11 @@ export interface SupabaseRelato {
 
 export interface SupabaseCapitulo {
   id: string;
-  relato_id: string;
+  historia_id: string;
   numero: number;
   titulo: string;
-  cuerpo: string;
-  extracto: string;
+  cuerpo_html: string;
+  estado?: string | null;
   published_at: string | null;
   created_at: string;
   updated_at: string;
@@ -60,9 +60,8 @@ export interface SupabaseMediaBlock {
   capitulo_id: string;
   tipo: string;
   url: string;
-  alt: string;
   caption: string;
-  posicion: number;
+  position: number;
   created_at: string;
 }
 
@@ -161,11 +160,11 @@ export function mapRelatoToStory(r: SupabaseRelato & { chapter_count?: number })
 export function mapCapituloToModel(c: SupabaseCapitulo): Capitulo {
   return {
     id: c.id,
-    relatoId: c.relato_id,
+    relatoId: c.historia_id,
     numero: c.numero,
     titulo: c.titulo || '',
-    cuerpo: c.cuerpo || '',
-    extracto: c.extracto || '',
+    cuerpo: c.cuerpo_html || '',
+    extracto: '',
     publishedAt: c.published_at,
     createdAt: c.created_at,
     mediaBlocks: (c.media_blocks ?? []).map(mapMediaBlock),
@@ -178,9 +177,9 @@ export function mapMediaBlock(b: SupabaseMediaBlock): CapituloMediaBlock {
     capituloId: b.capitulo_id,
     tipo: b.tipo as MediaBlockType,
     url: b.url || '',
-    alt: b.alt || '',
+    alt: '',
     caption: b.caption || '',
-    posicion: b.posicion,
+    posicion: b.position,
   };
 }
 

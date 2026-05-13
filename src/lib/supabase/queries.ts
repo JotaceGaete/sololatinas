@@ -66,7 +66,7 @@ export async function getCapitulosByRelatoId(relatoId: string): Promise<Capitulo
     const { data, error } = await supabase
       .from('historia_capitulos')
       .select('*, media_blocks:capitulo_media_blocks(*)')
-      .eq('relato_id', relatoId)
+      .eq('historia_id', relatoId)
       .order('numero', { ascending: true });
     if (error) {
       console.error('[getCapitulosByRelatoId] error:', error.message, error.details);
@@ -84,7 +84,7 @@ export async function getCapituloByNumero(relatoId: string, numero: number): Pro
     const { data, error } = await supabase
       .from('historia_capitulos')
       .select('*, media_blocks:capitulo_media_blocks(*)')
-      .eq('relato_id', relatoId)
+      .eq('historia_id', relatoId)
       .eq('numero', numero)
       .maybeSingle();
     if (error || !data) return null;

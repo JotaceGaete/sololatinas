@@ -16,10 +16,9 @@ interface Props {
 interface CapituloForm {
   titulo: string;
   cuerpo: string;
-  extracto: string;
 }
 
-const EMPTY_FORM: CapituloForm = { titulo: '', cuerpo: '', extracto: '' };
+const EMPTY_FORM: CapituloForm = { titulo: '', cuerpo: '' };
 
 export default function CapitulosEditor({ relatoId, relatoSlug }: Props) {
   const [capitulos, setCapitulos] = useState<Capitulo[]>([]);
@@ -38,7 +37,7 @@ export default function CapitulosEditor({ relatoId, relatoSlug }: Props) {
     const { data, error } = await supabase
       .from('historia_capitulos')
       .select('*')
-      .eq('relato_id', relatoId)
+      .eq('historia_id', relatoId)
       .order('numero', { ascending: true });
     if (error) {
       console.error('[CapitulosEditor] fetch error:', error.message);
@@ -58,11 +57,10 @@ export default function CapitulosEditor({ relatoId, relatoSlug }: Props) {
     setSaving(true);
     const nextNumero = capitulos.length > 0 ? Math.max(...capitulos.map((c) => c.numero)) + 1 : 1;
     const { error } = await supabase.from('historia_capitulos').insert({
-      relato_id: relatoId,
+      historia_id: relatoId,
       numero: nextNumero,
       titulo: newForm.titulo.trim(),
-      cuerpo: newForm.cuerpo,
-      extracto: newForm.extracto.trim(),
+      cuerpo_html: newForm.cuerpo,
     });
     setSaving(false);
     if (error) {
@@ -81,8 +79,7 @@ export default function CapitulosEditor({ relatoId, relatoSlug }: Props) {
       .from('historia_capitulos')
       .update({
         titulo: editForm.titulo.trim(),
-        cuerpo: editForm.cuerpo,
-        extracto: editForm.extracto.trim(),
+        cuerpo_html: editForm.cuerpo,
       })
       .eq('id', capitulo.id);
     setSaving(false);
@@ -155,13 +152,6 @@ export default function CapitulosEditor({ relatoId, relatoSlug }: Props) {
             placeholder="Título del capítulo"
             value={newForm.titulo}
             onChange={(e) => setNewForm((f) => ({ ...f, titulo: e.target.value }))}
-            className="input-field text-sm"
-          />
-          <input
-            type="text"
-            placeholder="Extracto / descripción breve (opcional)"
-            value={newForm.extracto}
-            onChange={(e) => setNewForm((f) => ({ ...f, extracto: e.target.value }))}
             className="input-field text-sm"
           />
           <textarea
@@ -240,7 +230,7 @@ export default function CapitulosEditor({ relatoId, relatoSlug }: Props) {
                         } else {
                           setEditingId(cap.id);
                           setExpandedId(cap.id);
-                          setEditForm({ titulo: cap.titulo, cuerpo: cap.cuerpo, extracto: cap.extracto });
+                          setEditForm({ titulo: cap.titulo, cuerpo: cap.cuerpo });
                         }
                       }}
                       className="p-1.5 text-muted-foreground hover:text-primary transition-colors text-xs"
@@ -274,13 +264,6 @@ export default function CapitulosEditor({ relatoId, relatoSlug }: Props) {
                           placeholder="Título del capítulo"
                           value={editForm.titulo}
                           onChange={(e) => setEditForm((f) => ({ ...f, titulo: e.target.value }))}
-                          className="input-field text-sm"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Extracto (opcional)"
-                          value={editForm.extracto}
-                          onChange={(e) => setEditForm((f) => ({ ...f, extracto: e.target.value }))}
                           className="input-field text-sm"
                         />
                         <textarea
