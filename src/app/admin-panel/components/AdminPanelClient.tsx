@@ -100,16 +100,21 @@ export default function AdminPanelClient() {
 
     async function fetchStories() {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('relatos')
-          .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
+          .select('*')
           .order('created_at', { ascending: false });
+        if (error) {
+          console.error('[AdminPanel] fetchStories error:', error.message, error.details);
+        }
         if (data) {
           const mapped = (data as SupabaseRelato[]).map(mapRelatoToStory);
           setStories(mapped);
           setStoryStatuses(Object.fromEntries(mapped.map((s) => [s.id, s.status])));
         }
-      } catch { /* show empty state */ }
+      } catch (e) {
+        console.error('[AdminPanel] fetchStories unexpected error:', e);
+      }
       setLoadingStories(false);
     }
 

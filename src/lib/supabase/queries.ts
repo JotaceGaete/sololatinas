@@ -11,13 +11,26 @@ export { mapRelatoToStory, mapProfileToAuthor };
 export async function getPublishedStories(): Promise<Story[]> {
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('relatos')
-      .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
+      .select('*')
       .order('published_at', { ascending: false });
-    if (error || !data) return [];
+
+    if (error) {
+      console.error('[getPublishedStories] published_at order failed, retrying with created_at:', error.message, error.details);
+      ({ data, error } = await supabase
+        .from('relatos')
+        .select('*')
+        .order('created_at', { ascending: false }));
+    }
+
+    if (error || !data) {
+      console.error('[getPublishedStories] query error:', error?.message, error?.details);
+      return [];
+    }
     return (data as SupabaseRelato[]).filter(isPublishedRelato).map(mapRelatoToStory);
-  } catch {
+  } catch (e) {
+    console.error('[getPublishedStories] unexpected error:', e);
     return [];
   }
 }

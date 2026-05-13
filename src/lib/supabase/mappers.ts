@@ -19,6 +19,8 @@ export interface SupabaseRelato {
   categoria?: string | null;
   author_id?: string | null;
   autor_id?: string | null;
+  author_name?: string | null;
+  autor_nombre?: string | null;
   status?: string | null;
   estado?: string | null;
   published?: boolean | null;
@@ -106,7 +108,7 @@ export function mapRelatoToStory(r: SupabaseRelato): Story {
   return {
     id: r.id,
     title,
-    author: r.autor?.full_name ?? 'Autora',
+    author: r.autor?.full_name ?? r.author_name ?? r.autor_nombre ?? 'Autora',
     authorId: firstText(r.autor_id, r.author_id),
     country: firstText(r.pais),
     excerpt,
