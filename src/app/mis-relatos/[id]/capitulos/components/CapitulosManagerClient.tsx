@@ -29,9 +29,8 @@ export default function CapitulosManagerClient({ story, initialCapitulos, userId
       .select('numero')
       .eq('historia_id', story.id)
       .order('numero', { ascending: false })
-      .limit(1)
-      .single();
-    return (data as any)?.numero ?? 0;
+      .limit(1);
+    return (data as any)?.[0]?.numero ?? 0;
   }
 
   const handleCreate = useCallback(async () => {
