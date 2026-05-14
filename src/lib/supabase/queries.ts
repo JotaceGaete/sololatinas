@@ -14,7 +14,7 @@ export async function getPublishedStories(): Promise<Story[]> {
     const { data, error } = await supabase
       .from('relatos')
       .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
-      .order('published_at', { ascending: false });
+      .order('created_at', { ascending: false });
     if (error || !data) return [];
     return (data as SupabaseRelato[]).filter(isPublishedRelato).map(mapRelatoToStory);
   } catch {

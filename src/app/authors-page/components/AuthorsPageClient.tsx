@@ -154,7 +154,7 @@ export default function AuthorsPageClient() {
           supabase
             .from('relatos')
             .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
-            .order('published_at', { ascending: false }),
+            .order('created_at', { ascending: false }),
         ]);
 
         const profiles = (profilesResult.data ?? []) as SupabaseProfile[];

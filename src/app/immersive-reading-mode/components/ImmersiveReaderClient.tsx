@@ -121,7 +121,7 @@ export default function ImmersiveReaderClient() {
         const relatedQuery = supabase
           .from('relatos')
           .select(baseSelect)
-          .order('published_at', { ascending: false })
+          .order('created_at', { ascending: false })
           .limit(5);
 
         if (relatoId) {
