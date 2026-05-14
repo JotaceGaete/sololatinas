@@ -6,6 +6,7 @@ import { getPublishedStories } from '@/lib/supabase/queries';
 
 export default async function StoriesLibraryPage() {
   const stories = await getPublishedStories();
+  console.log('[DIAG StoriesLibraryPage] stories received:', stories.length);
 
   return (
     <main className="min-h-screen bg-background">

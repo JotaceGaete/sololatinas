@@ -14,6 +14,7 @@ export default async function HomePage() {
     getPublishedStories(),
     getAuthors(),
   ]);
+  console.log('[DIAG HomePage] stories received:', stories.length, '| authors:', authors.length);
 
   return (
     <main className="min-h-screen bg-background">

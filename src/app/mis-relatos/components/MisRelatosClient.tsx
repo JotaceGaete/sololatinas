@@ -286,7 +286,16 @@ export default function MisRelatosClient() {
           .eq('autor_id', user.id)
           .order('updated_at', { ascending: false });
 
-        if (error) throw error;
+        console.log('[DIAG MisRelatos fetchRelatos]', {
+          userId: user.id,
+          error: error ?? null,
+          count: data?.length ?? 0,
+          first3: (data ?? []).slice(0, 3).map((r: any) => ({ id: r.id, titulo: r.titulo, estado: r.estado })),
+        });
+        if (error) {
+          console.error('[DIAG MisRelatos] Supabase error:', error.message, error.hint);
+          throw error;
+        }
         const relatosData = (data as Relato[]) ?? [];
 
         const enriched = await Promise.all(
@@ -303,7 +312,8 @@ export default function MisRelatosClient() {
       } else {
         setRelatos([]);
       }
-    } catch {
+    } catch (err) {
+      console.error('[DIAG MisRelatos] caught exception:', err);
       setRelatos([]);
     } finally {
       setLoading(false);

@@ -100,16 +100,24 @@ export default function AdminPanelClient() {
 
     async function fetchStories() {
       try {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('relatos')
           .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
           .order('created_at', { ascending: false });
+        console.log('[DIAG AdminPanel fetchStories]', {
+          error: error ?? null,
+          count: data?.length ?? 0,
+          first3: (data ?? []).slice(0, 3).map((r: any) => ({ id: r.id, titulo: r.titulo, estado: r.estado })),
+        });
+        if (error) console.error('[DIAG AdminPanel] Supabase error:', error.message, error.hint);
         if (data) {
           const mapped = (data as SupabaseRelato[]).map(mapRelatoToStory);
           setStories(mapped);
           setStoryStatuses(Object.fromEntries(mapped.map((s) => [s.id, s.status])));
         }
-      } catch { /* show empty state */ }
+      } catch (err) {
+        console.error('[DIAG AdminPanel fetchStories] exception:', err);
+      }
       setLoadingStories(false);
     }
 
