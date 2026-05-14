@@ -1,10 +1,10 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import AppImage from '@/components/ui/AppImage';
 import type { Capitulo, CapituloMediaBlock, Story } from '@/lib/stories/types';
-import { renderStoryHtml, splitIntoPages } from '@/lib/stories/render';
+import { splitIntoPages } from '@/lib/stories/render';
 import { ArrowLeft, ArrowRight, BookOpen, ChevronLeft, ChevronRight, List, X } from 'lucide-react';
 
 const WORDS_TARGET = 1500;
@@ -18,8 +18,11 @@ interface Props {
 }
 
 interface MediaModal {
+  id: string;
   type: 'image' | 'video';
   url: string;
+  alt: string;
+  openNonce: number;
 }
 
 function getVideoEmbed(url: string): string {
@@ -79,53 +82,96 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
   const [indexOpen, setIndexOpen] = useState(false);
   const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
   const [mediaModal, setMediaModal] = useState<MediaModal | null>(null);
+  const [mediaModalOpen, setMediaModalOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Attach click handlers after each page render
-  useEffect(() => {
-    const el = contentRef.current;
-    if (!el) return;
-    const cleanup: Array<() => void> = [];
+  const logMediaDebug = useCallback((message: string, data?: Record<string, unknown>) => {
+    if (process.env.NODE_ENV !== 'production') {
+      console.info(`[ChapterReader][media] ${message}`, data ?? '');
+    }
+  }, []);
 
-    // Inline images → lightbox
-    el.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
-      const handler = () => setLightboxSrc(img.src);
-      img.addEventListener('click', handler);
-      img.style.cursor = 'zoom-in';
-      cleanup.push(() => img.removeEventListener('click', handler));
+  const closeMediaModal = useCallback(() => {
+    logMediaDebug('cierre del modal', {
+      mediaModalOpen,
+      selectedMedia: mediaModal,
     });
-
-    // Narrative media blocks → media modal
-    el.querySelectorAll<HTMLElement>('[data-media-type]').forEach((block) => {
-      const type = block.dataset.mediaType as 'image' | 'video';
-      const url = block.dataset.mediaUrl ?? '';
-      if (!url) return;
-      const handler = () => setMediaModal({ type, url });
-      block.addEventListener('click', handler);
-      cleanup.push(() => block.removeEventListener('click', handler));
+    setMediaModalOpen(false);
+    setMediaModal(null);
+    logMediaDebug('estado despues de cerrar', {
+      mediaModalOpen: false,
+      selectedMedia: null,
     });
+  }, [logMediaDebug, mediaModal, mediaModalOpen]);
 
-    return () => cleanup.forEach((fn) => fn());
-  }, [currentPage]);
+  const handleContentClick = useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target as HTMLElement | null;
+      logMediaDebug('click detectado', {
+        target: target?.tagName,
+        className: target?.className,
+      });
 
-  const pages = useMemo(
-    () => {
-      const result = splitIntoPages(capitulo.cuerpo, WORDS_TARGET, WORDS_MIN, WORDS_MAX);
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('[ChapterReader] chapter html snippet:', capitulo.cuerpo.slice(0, 500));
-        console.log('[ChapterReader] pages count:', result.length);
-        console.log('[ChapterReader] page[0] snippet:', result[0]?.slice(0, 500));
-        const hasMediaBlock = capitulo.cuerpo.includes('ch-media-block');
-        console.log('[ChapterReader] has ch-media-block in cuerpo:', hasMediaBlock);
-        if (hasMediaBlock) {
-          const match = capitulo.cuerpo.match(/<div[^>]*ch-media-block[^>]*>/);
-          console.log('[ChapterReader] media block tag:', match?.[0]);
-        }
+      const mediaBlock = target?.closest<HTMLElement>('[data-media-type][data-media-url]');
+      if (mediaBlock && contentRef.current?.contains(mediaBlock)) {
+        const type = mediaBlock.dataset.mediaType === 'video' ? 'video' : 'image';
+        const url = mediaBlock.dataset.mediaUrl ?? '';
+        const label = mediaBlock.textContent?.trim() ?? '';
+        const mediaId = mediaBlock.dataset.mediaId || `${type}:${url}`;
+
+        logMediaDebug('media id / url detectada', {
+          mediaId,
+          type,
+          url,
+          label,
+          mediaModalOpen,
+          selectedMedia: mediaModal,
+        });
+
+        if (!url) return;
+
+        const nextMedia: MediaModal = {
+          id: mediaId,
+          type,
+          url,
+          alt: label,
+          openNonce: Date.now(),
+        };
+        setMediaModal(nextMedia);
+        setMediaModalOpen(true);
+        logMediaDebug('estado despues de abrir', {
+          mediaModalOpen: true,
+          selectedMedia: nextMedia,
+        });
+        return;
       }
-      return result;
+
+      const image = target?.closest<HTMLImageElement>('img');
+      if (image && contentRef.current?.contains(image)) {
+        logMediaDebug('imagen inline detectada', {
+          url: image.currentSrc || image.src,
+        });
+        setLightboxSrc(image.currentSrc || image.src);
+      }
     },
-    [capitulo.cuerpo],
+    [logMediaDebug, mediaModal, mediaModalOpen]
   );
+
+  const pages = useMemo(() => {
+    const result = splitIntoPages(capitulo.cuerpo, WORDS_TARGET, WORDS_MIN, WORDS_MAX);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[ChapterReader] chapter html snippet:', capitulo.cuerpo.slice(0, 500));
+      console.log('[ChapterReader] pages count:', result.length);
+      console.log('[ChapterReader] page[0] snippet:', result[0]?.slice(0, 500));
+      const hasMediaBlock = capitulo.cuerpo.includes('ch-media-block');
+      console.log('[ChapterReader] has ch-media-block in cuerpo:', hasMediaBlock);
+      if (hasMediaBlock) {
+        const match = capitulo.cuerpo.match(/<div[^>]*ch-media-block[^>]*>/);
+        console.log('[ChapterReader] media block tag:', match?.[0]);
+      }
+    }
+    return result;
+  }, [capitulo.cuerpo]);
   const totalPages = pages.length;
 
   const prevCapitulo = allCapitulos.find((c) => c.numero === capitulo.numero - 1) ?? null;
@@ -147,7 +193,7 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
         .ch-content ol { list-style: decimal; padding-left: 1.75rem; margin: 0.75rem 0 1.75rem; }
         .ch-content li { margin: 0.35rem 0; }
         .ch-content figure { margin: 2rem 0; border-radius: 0.75rem; overflow: hidden; }
-        .ch-content figure img { width: 100%; display: block; border-radius: 0.75rem; }
+        .ch-content figure img { width: 100%; display: block; border-radius: 0.75rem; cursor: zoom-in; }
         .ch-content figcaption { font-size: 0.78rem; color: #9A8A7A; text-align: center; padding: 0.5rem 0.75rem; font-style: italic; }
         .ch-reveal-block, .ch-media-block {
           display: block;
@@ -245,7 +291,9 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
           )}
         </div>
 
-        {beforeBlocks.map((b) => <MediaBlock key={b.id} block={b} />)}
+        {beforeBlocks.map((b) => (
+          <MediaBlock key={b.id} block={b} />
+        ))}
 
         {totalPages > 1 && (
           <p className="text-xs text-[#9A8A7A] text-center mb-6">
@@ -255,16 +303,22 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
         <div
           ref={contentRef}
           className="ch-content font-display text-[#F5EFE6] leading-[1.95] text-lg"
+          onClick={handleContentClick}
           dangerouslySetInnerHTML={{ __html: pages[currentPage - 1] ?? '' }}
         />
 
-        {afterBlocks.map((b) => <MediaBlock key={b.id} block={b} />)}
+        {afterBlocks.map((b) => (
+          <MediaBlock key={b.id} block={b} />
+        ))}
 
         {/* In-chapter pagination */}
         {totalPages > 1 && (
           <div className="flex items-center justify-center gap-4 mt-10">
             <button
-              onClick={() => { setCurrentPage((p) => Math.max(1, p - 1)); window.scrollTo(0, 0); }}
+              onClick={() => {
+                setCurrentPage((p) => Math.max(1, p - 1));
+                window.scrollTo(0, 0);
+              }}
               disabled={currentPage === 1}
               className="p-2 rounded-lg border border-[#2E2420] text-[#9A8A7A] hover:text-[#F5EFE6] hover:border-[#C9A96E]/40 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
             >
@@ -274,7 +328,10 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
               {currentPage} / {totalPages}
             </span>
             <button
-              onClick={() => { setCurrentPage((p) => Math.min(totalPages, p + 1)); window.scrollTo(0, 0); }}
+              onClick={() => {
+                setCurrentPage((p) => Math.min(totalPages, p + 1));
+                window.scrollTo(0, 0);
+              }}
               disabled={currentPage === totalPages}
               className="p-2 rounded-lg border border-[#2E2420] text-[#9A8A7A] hover:text-[#F5EFE6] hover:border-[#C9A96E]/40 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
             >
@@ -353,14 +410,17 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
       )}
 
       {/* Narrative media modal */}
-      {mediaModal && (
+      {mediaModalOpen && mediaModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 p-4"
-          onClick={() => setMediaModal(null)}
+          onClick={closeMediaModal}
         >
           <button
             className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors z-10"
-            onClick={() => setMediaModal(null)}
+            onClick={(e) => {
+              e.stopPropagation();
+              closeMediaModal();
+            }}
           >
             <X size={24} />
           </button>
@@ -368,13 +428,15 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
           {mediaModal.type === 'image' ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
+              key={mediaModal.openNonce}
               src={mediaModal.url}
-              alt=""
+              alt={mediaModal.alt}
               className="max-w-full max-h-[90vh] object-contain rounded-xl"
               onClick={(e) => e.stopPropagation()}
             />
           ) : isDirectVideo(mediaModal.url) ? (
             <video
+              key={mediaModal.openNonce}
               src={mediaModal.url}
               controls
               autoPlay
@@ -383,6 +445,7 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
             />
           ) : (
             <div
+              key={mediaModal.openNonce}
               className="w-full max-w-3xl aspect-video rounded-xl overflow-hidden"
               onClick={(e) => e.stopPropagation()}
             >
