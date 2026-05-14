@@ -9,7 +9,7 @@ import RichTextEditor from './RichTextEditor';
 import PreviewModal from './PreviewModal';
 import {
   PenLine, ImagePlus, Tags, Globe, BookOpen,
-  Sparkles, Eye, Save, Send, X, ChevronDown
+  Sparkles, Eye, Save, Send, X, ChevronDown, Lock
 } from 'lucide-react';
 
 function slugify(value: string) {
@@ -61,7 +61,7 @@ interface FormData {
 
 export default function EscribirRelatoClient() {
   const router = useRouter();
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null);
   const getSupabase = () => {
     if (!supabaseRef.current) supabaseRef.current = createClient();
@@ -270,6 +270,43 @@ export default function EscribirRelatoClient() {
   };
 
   const readingTime = calcReadingTime(form.cuerpo);
+
+  // ─── Auth wall ───────────────────────────────────────────────────────────────
+
+  if (!loading && !user) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center px-4">
+        <div className="max-w-md w-full text-center">
+          <div className="bg-surface-elevated border border-primary/20 rounded-2xl p-10">
+            <div className="w-16 h-16 rounded-full bg-primary/15 border border-primary/30 flex items-center justify-center mx-auto mb-5">
+              <Lock size={28} className="text-primary" />
+            </div>
+            <h2 className="font-display text-2xl font-bold text-foreground mb-3">
+              Acceso restringido
+            </h2>
+            <p className="text-sm text-muted-foreground leading-relaxed mb-6">
+              Para comenzar a escribir debes iniciar sesión o crear una cuenta.
+            </p>
+            <div className="flex flex-col gap-3">
+              <a
+                href="/sign-up-login-screen?redirect=/escribir-relato"
+                className="btn-primary w-full justify-center py-3"
+              >
+                <PenLine size={16} />
+                Iniciar sesión para escribir
+              </a>
+              <a
+                href="/sign-up-login-screen?tab=register&redirect=/escribir-relato"
+                className="btn-outline w-full justify-center py-3"
+              >
+                Crear cuenta gratis
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -580,16 +617,7 @@ export default function EscribirRelatoClient() {
           </div>
         </div>
 
-        {/* Auth notice */}
-        {!user && (
-          <div className="text-center py-4 px-6 rounded-xl bg-surface border border-border/50">
-            <p className="text-sm text-muted-foreground">
-              Necesitas{' '}
-              <a href="/sign-up-login-screen" className="text-primary hover:underline">iniciar sesión</a>
-              {' '}para guardar o publicar tu relato.
-            </p>
-          </div>
-        )}
+
       </div>
 
       {/* Preview Modal */}

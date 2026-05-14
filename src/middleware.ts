@@ -3,7 +3,12 @@ import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
 export async function middleware(request: NextRequest) {
-  if (!request.nextUrl.pathname.startsWith('/admin-panel')) {
+  const { pathname } = request.nextUrl;
+
+  const isAdminRoute = pathname.startsWith('/admin-panel');
+  const isWriterRoute = pathname.startsWith('/escribir-relato');
+
+  if (!isAdminRoute && !isWriterRoute) {
     return NextResponse.next();
   }
 
@@ -29,22 +34,26 @@ export async function middleware(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
 
   if (!user) {
-    return NextResponse.redirect(new URL('/sign-up-login-screen', request.url));
+    const loginUrl = new URL('/sign-up-login-screen', request.url);
+    loginUrl.searchParams.set('redirect', pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  const { data: adminRecord } = await supabase
-    .from('admin_users')
-    .select('email')
-    .eq('email', user.email)
-    .maybeSingle();
+  if (isAdminRoute) {
+    const { data: adminRecord } = await supabase
+      .from('admin_users')
+      .select('email')
+      .eq('email', user.email)
+      .maybeSingle();
 
-  if (!adminRecord) {
-    return NextResponse.redirect(new URL('/', request.url));
+    if (!adminRecord) {
+      return NextResponse.redirect(new URL('/', request.url));
+    }
   }
 
   return response;
 }
 
 export const config = {
-  matcher: ['/admin-panel', '/admin-panel/:path*'],
+  matcher: ['/admin-panel', '/admin-panel/:path*', '/escribir-relato', '/escribir-relato/:path*'],
 };

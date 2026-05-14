@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import AppLogo from '@/components/ui/AppLogo';
 import { useForm } from 'react-hook-form';
@@ -24,8 +24,7 @@ interface RegisterForm {
   password: string;
   confirmPassword: string;
   birthYear: string;
-  ageConfirm: boolean;
-  termsAccepted: boolean;
+  legalConsent: boolean;
 }
 
 // Age gate state
@@ -39,8 +38,11 @@ const demoCredentials = [
 
 export default function AuthClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirect') || '/';
+  const initialTab = searchParams.get('tab') === 'register' ? 'register' : 'login';
   const { signIn, signUp } = useAuth();
-  const [tab, setTab] = useState<AuthTab>('login');
+  const [tab, setTab] = useState<AuthTab>(initialTab as AuthTab);
   const [ageGate, setAgeGate] = useState<AgeGateState>('pending');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -73,7 +75,7 @@ export default function AuthClient() {
     try {
       await signIn(data.email, data.password);
       toast.success('¡Bienvenida de vuelta!');
-      router.push('/');
+      router.push(redirectTo);
     } catch (err: any) {
       const msg = err?.message ?? 'Error al iniciar sesión';
       loginForm.setError('root', {
@@ -93,7 +95,13 @@ export default function AuthClient() {
     }
     setIsLoading(true);
     try {
-      await signUp(data.email, data.password, { fullName: data.name });
+      await signUp(data.email, data.password, {
+        fullName: data.name,
+        termsAcceptedAt: new Date().toISOString(),
+        isAdultConfirmed: true,
+        contentPolicyAcceptedAt: new Date().toISOString(),
+        redirectTo,
+      });
       setEmailConfirmPending(true);
     } catch (err: any) {
       const msg = err?.message ?? 'Error al crear la cuenta';
@@ -528,38 +536,32 @@ export default function AuthClient() {
               }
               </div>
 
-              {/* Age Confirm */}
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                type="checkbox"
-                className="w-3.5 h-3.5 accent-primary mt-0.5 flex-shrink-0"
-                {...registerForm.register('ageConfirm', { required: 'Debes confirmar tu edad' })} />
-              
-                <span className="text-xs text-muted-foreground leading-relaxed">
-                  Confirmo que tengo 18 años o más y acepto el acceso a contenido para adultos
-                </span>
-              </label>
-              {registerForm.formState.errors.ageConfirm &&
-            <p className="text-xs text-red-400 -mt-2">{registerForm.formState.errors.ageConfirm.message}</p>
-            }
-
-              {/* Terms */}
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                type="checkbox"
-                className="w-3.5 h-3.5 accent-primary mt-0.5 flex-shrink-0"
-                {...registerForm.register('termsAccepted', { required: 'Debes aceptar los términos' })} />
-              
-                <span className="text-xs text-muted-foreground leading-relaxed">
-                  Acepto los{' '}
-                  <a href="#" className="text-primary hover:underline">Términos de Uso</a>
-                  {' '}y la{' '}
-                  <a href="#" className="text-primary hover:underline">Política de Privacidad</a>
-                </span>
-              </label>
-              {registerForm.formState.errors.termsAccepted &&
-            <p className="text-xs text-red-400 -mt-2">{registerForm.formState.errors.termsAccepted.message}</p>
-            }
+              {/* Legal consent — single mandatory checkbox */}
+              <div className="p-3 rounded-xl border border-border/60 bg-surface">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-3.5 h-3.5 accent-primary mt-0.5 flex-shrink-0"
+                    {...registerForm.register('legalConsent', {
+                      required: 'Debes aceptar los términos para continuar'
+                    })}
+                  />
+                  <span className="text-xs text-muted-foreground leading-relaxed">
+                    Declaro que soy mayor de edad (18+) y acepto los{' '}
+                    <a href="#" className="text-primary hover:underline">Términos y Condiciones</a>
+                    {', '}la{' '}
+                    <a href="#" className="text-primary hover:underline">Política de Privacidad</a>
+                    {' '}y la{' '}
+                    <a href="#" className="text-primary hover:underline">Política de Contenidos para Adultos</a>
+                    {' '}de SoloLatinas.
+                  </span>
+                </label>
+                {registerForm.formState.errors.legalConsent && (
+                  <p className="text-xs text-red-400 mt-2 ml-6">
+                    {registerForm.formState.errors.legalConsent.message}
+                  </p>
+                )}
+              </div>
 
               <button
               type="submit"

@@ -49,15 +49,19 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const signUp = async (email: string, password: string, metadata = {}) => {
     const supabase = getSupabase();
+    const meta = metadata as any;
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: {
-          full_name: (metadata as any)?.fullName || '',
-          avatar_url: (metadata as any)?.avatarUrl || ''
+          full_name: meta?.fullName || '',
+          avatar_url: meta?.avatarUrl || '',
+          terms_accepted_at: meta?.termsAcceptedAt || null,
+          is_adult_confirmed: meta?.isAdultConfirmed ?? false,
+          content_policy_accepted_at: meta?.contentPolicyAcceptedAt || null,
         },
-        emailRedirectTo: `${window.location.origin}/auth/callback`
+        emailRedirectTo: `${window.location.origin}/auth/callback${meta?.redirectTo ? `?redirect=${encodeURIComponent(meta.redirectTo)}` : ''}`
       }
     });
     if (error) throw error;
