@@ -153,9 +153,17 @@ export default function AuthorsPageClient() {
             .limit(20),
           supabase
             .from('relatos')
-            .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
+            .select('*')
             .order('created_at', { ascending: false }),
         ]);
+
+        if (storiesResult.error) {
+          console.error('[AuthorsPage] relatos error:', {
+            code: storiesResult.error.code,
+            message: storiesResult.error.message,
+            hint: storiesResult.error.hint,
+          });
+        }
 
         const profiles = (profilesResult.data ?? []) as SupabaseProfile[];
         const relatos = (storiesResult.data ?? []) as SupabaseRelato[];
@@ -163,13 +171,13 @@ export default function AuthorsPageClient() {
 
         const withCounts = profiles.map((p) => ({
           ...p,
-          story_count: stories.filter((s) => s.authorId === p.id).length,
+          story_count: relatos.filter((r) => (r.autor_id ?? r.author_id) === p.id && isPublishedRelato(r)).length,
         }));
 
         setAuthors(withCounts.map(mapProfileToAuthor));
         setAllStories(stories);
-      } catch {
-        // no-op: show empty state
+      } catch (err) {
+        console.error('[AuthorsPage] fetchData exception:', err);
       } finally {
         setLoading(false);
       }

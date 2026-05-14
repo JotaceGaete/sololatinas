@@ -14,7 +14,7 @@ export async function getPublishedStories(): Promise<Story[]> {
     const supabaseProbe = await createClient();
     const probe = await supabaseProbe
       .from('relatos')
-      .select('id, titulo, estado, status, published, created_at, autor_id')
+      .select('id, titulo, estado, created_at, autor_id')
       .limit(5);
     console.log('[DIAG getPublishedStories] raw probe:', {
       error: probe.error ?? null,
@@ -23,8 +23,6 @@ export async function getPublishedStories(): Promise<Story[]> {
         id: r.id,
         titulo: r.titulo,
         estado: r.estado,
-        status: r.status,
-        published: r.published,
         autor_id: r.autor_id,
       })) ?? [],
     });
@@ -35,9 +33,11 @@ export async function getPublishedStories(): Promise<Story[]> {
 
   try {
     const supabase = await createClient();
+
+    // Step 1: fetch relatos without embedded join (no FK dependency)
     const { data, error } = await supabase
       .from('relatos')
-      .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
+      .select('*')
       .order('created_at', { ascending: false });
 
     console.log('[DIAG getPublishedStories] main query:', {
@@ -47,13 +47,16 @@ export async function getPublishedStories(): Promise<Story[]> {
         id: r.id,
         titulo: r.titulo,
         estado: r.estado,
-        status: r.status,
-        published: r.published,
       })),
     });
 
     if (error) {
-      console.error('[DIAG getPublishedStories] Supabase error:', error.message, error.details, error.hint);
+      console.error('[DIAG getPublishedStories] Supabase error:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
       return [];
     }
     if (!data) {
@@ -64,7 +67,30 @@ export async function getPublishedStories(): Promise<Story[]> {
     const filtered = (data as SupabaseRelato[]).filter(isPublishedRelato);
     console.log('[DIAG getPublishedStories] after isPublishedRelato filter:', filtered.length, '/', data.length);
 
-    return filtered.map(mapRelatoToStory);
+    // Step 2: fetch author profiles for the filtered relatos
+    const authorIds = [...new Set(
+      filtered
+        .map((r) => r.autor_id ?? r.author_id)
+        .filter((id): id is string => typeof id === 'string'),
+    )];
+
+    let profileMap: Record<string, SupabaseProfile> = {};
+    if (authorIds.length > 0) {
+      const supabase2 = await createClient();
+      const { data: profiles, error: profilesError } = await supabase2
+        .from('user_profiles')
+        .select('id, full_name, avatar_url, country, bio')
+        .in('id', authorIds);
+      if (profilesError) {
+        console.error('[DIAG getPublishedStories] profiles error:', profilesError.message);
+      }
+      profileMap = Object.fromEntries((profiles ?? []).map((p: any) => [p.id, p]));
+    }
+
+    return filtered.map((r) => {
+      const profile = profileMap[r.autor_id ?? r.author_id ?? ''] ?? null;
+      return mapRelatoToStory({ ...r, autor: profile });
+    });
   } catch (err) {
     console.error('[DIAG getPublishedStories] caught exception:', err);
     return [];
@@ -81,20 +107,36 @@ export async function getAuthors(): Promise<Author[]> {
       .eq('is_active', true)
       .order('created_at', { ascending: true })
       .limit(20);
-    if (error || !data) return [];
+
+    if (error) {
+      console.error('[DIAG getAuthors] Supabase error:', {
+        code: error.code,
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+      });
+      return [];
+    }
+    if (!data) return [];
 
     const profiles = data as SupabaseProfile[];
+
     const supabase2 = await createClient();
-    const { data: relatos } = await supabase2
+    const { data: relatos, error: relatosError } = await supabase2
       .from('relatos')
-      .select('*');
+      .select('id, estado, autor_id, author_id');
+    if (relatosError) {
+      console.error('[DIAG getAuthors] relatos error:', relatosError.message);
+    }
+
     const publicStories = ((relatos ?? []) as SupabaseRelato[]).filter(isPublishedRelato);
     const withCounts = profiles.map((p) => ({
       ...p,
       story_count: publicStories.filter((story) => (story.autor_id ?? story.author_id) === p.id).length,
     }));
     return withCounts.map(mapProfileToAuthor);
-  } catch {
+  } catch (err) {
+    console.error('[DIAG getAuthors] caught exception:', err);
     return [];
   }
 }

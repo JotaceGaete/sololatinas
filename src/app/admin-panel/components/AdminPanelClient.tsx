@@ -100,18 +100,39 @@ export default function AdminPanelClient() {
 
     async function fetchStories() {
       try {
+        // Step 1: fetch relatos without embedded join
         const { data, error } = await supabase
           .from('relatos')
-          .select('*, autor:user_profiles(full_name, avatar_url, country, bio)')
+          .select('*')
           .order('created_at', { ascending: false });
         console.log('[DIAG AdminPanel fetchStories]', {
           error: error ?? null,
           count: data?.length ?? 0,
           first3: (data ?? []).slice(0, 3).map((r: any) => ({ id: r.id, titulo: r.titulo, estado: r.estado })),
         });
-        if (error) console.error('[DIAG AdminPanel] Supabase error:', error.message, error.hint);
+        if (error) {
+          console.error('[DIAG AdminPanel] Supabase error:', { code: error.code, message: error.message, hint: error.hint });
+        }
         if (data) {
-          const mapped = (data as SupabaseRelato[]).map(mapRelatoToStory);
+          // Step 2: fetch author profiles separately
+          const authorIds = [...new Set(
+            (data as SupabaseRelato[])
+              .map((r) => r.autor_id ?? r.author_id)
+              .filter((id): id is string => typeof id === 'string'),
+          )];
+          let profileMap: Record<string, any> = {};
+          if (authorIds.length > 0) {
+            const { data: profiles } = await supabase
+              .from('user_profiles')
+              .select('id, full_name, avatar_url, country, bio')
+              .in('id', authorIds);
+            profileMap = Object.fromEntries((profiles ?? []).map((p: any) => [p.id, p]));
+          }
+          const relatosWithAutor = (data as SupabaseRelato[]).map((r) => ({
+            ...r,
+            autor: profileMap[r.autor_id ?? r.author_id ?? ''] ?? null,
+          }));
+          const mapped = relatosWithAutor.map(mapRelatoToStory);
           setStories(mapped);
           setStoryStatuses(Object.fromEntries(mapped.map((s) => [s.id, s.status])));
         }

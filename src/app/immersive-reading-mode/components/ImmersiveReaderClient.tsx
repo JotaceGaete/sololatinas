@@ -117,33 +117,50 @@ export default function ImmersiveReaderClient() {
     async function fetchStory() {
       setLoadingStory(true);
       try {
-        const baseSelect = '*, autor:user_profiles(full_name, avatar_url, country, bio)';
-        const relatedQuery = supabase
-          .from('relatos')
-          .select(baseSelect)
-          .order('created_at', { ascending: false })
-          .limit(5);
+        const attachAuthor = async (relatos: SupabaseRelato[]): Promise<SupabaseRelato[]> => {
+          const authorIds = [...new Set(
+            relatos.map((r) => r.autor_id ?? r.author_id).filter((id): id is string => typeof id === 'string'),
+          )];
+          if (authorIds.length === 0) return relatos;
+          const { data: profiles } = await supabase
+            .from('user_profiles')
+            .select('id, full_name, avatar_url, country, bio')
+            .in('id', authorIds);
+          const profileMap = Object.fromEntries((profiles ?? []).map((p: any) => [p.id, p]));
+          return relatos.map((r) => ({ ...r, autor: profileMap[r.autor_id ?? r.author_id ?? ''] ?? null }));
+        };
 
         if (relatoId) {
           const [{ data: selected }, { data: relatedData }] = await Promise.all([
-            supabase
-              .from('relatos')
-              .select(baseSelect)
-              .eq('id', relatoId)
-              .maybeSingle(),
-            relatedQuery.neq('id', relatoId),
+            supabase.from('relatos').select('*').eq('id', relatoId).maybeSingle(),
+            supabase.from('relatos').select('*').order('created_at', { ascending: false }).limit(5).neq('id', relatoId),
           ]);
 
-          const selectedRelato = selected as SupabaseRelato | null;
-          setStory(selectedRelato && isPublishedRelato(selectedRelato) ? mapRelatoToStory(selectedRelato) : null);
-          setRelated(((relatedData ?? []) as SupabaseRelato[]).filter(isPublishedRelato).map(mapRelatoToStory));
+          const rawSelected = selected as SupabaseRelato | null;
+          const rawRelated = (relatedData ?? []) as SupabaseRelato[];
+
+          const allRaw = [...(rawSelected ? [rawSelected] : []), ...rawRelated];
+          const withAuthor = await attachAuthor(allRaw);
+
+          const selectedWithAuthor = rawSelected ? withAuthor[0] : null;
+          const relatedWithAuthor = rawSelected ? withAuthor.slice(1) : withAuthor;
+
+          setStory(selectedWithAuthor && isPublishedRelato(selectedWithAuthor) ? mapRelatoToStory(selectedWithAuthor) : null);
+          setRelated(relatedWithAuthor.filter(isPublishedRelato).map(mapRelatoToStory));
         } else {
-          const { data } = await relatedQuery;
-          const stories = ((data ?? []) as SupabaseRelato[]).filter(isPublishedRelato).map(mapRelatoToStory);
+          const { data } = await supabase
+            .from('relatos')
+            .select('*')
+            .order('created_at', { ascending: false })
+            .limit(5);
+          const raw = (data ?? []) as SupabaseRelato[];
+          const withAuthor = await attachAuthor(raw);
+          const stories = withAuthor.filter(isPublishedRelato).map(mapRelatoToStory);
           setStory(stories[0] ?? null);
           setRelated(stories.slice(1));
         }
-      } catch {
+      } catch (err) {
+        console.error('[ImmersiveReader] fetchStory error:', err);
         setStory(null);
         setRelated([]);
       } finally {
