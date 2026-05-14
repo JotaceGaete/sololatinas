@@ -39,9 +39,9 @@ const demoCredentials = [
 export default function AuthClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectTo = searchParams.get('redirect') || '/';
+  const redirectTo = searchParams.get('redirect') || '/mis-relatos';
   const initialTab = searchParams.get('tab') === 'register' ? 'register' : 'login';
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, isAdmin } = useAuth();
   const [tab, setTab] = useState<AuthTab>(initialTab as AuthTab);
   const [ageGate, setAgeGate] = useState<AgeGateState>('pending');
   const [showPassword, setShowPassword] = useState(false);
@@ -73,9 +73,11 @@ export default function AuthClient() {
   const onLoginSubmit = async (data: LoginForm) => {
     setIsLoading(true);
     try {
-      await signIn(data.email, data.password);
+      const result = await signIn(data.email, data.password);
+      const userEmail = result?.user?.email ?? data.email;
       toast.success('¡Bienvenida de vuelta!');
-      router.push(redirectTo);
+      const adminStatus = await isAdmin(userEmail);
+      router.push(adminStatus ? '/admin-panel' : redirectTo);
     } catch (err: any) {
       const msg = err?.message ?? 'Error al iniciar sesión';
       loginForm.setError('root', {

@@ -107,14 +107,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return data;
   };
 
-  const isAdmin = async (): Promise<boolean> => {
-    if (!user?.email) return false;
+  const isAdmin = async (emailOverride?: string): Promise<boolean> => {
+    const emailToCheck = emailOverride || user?.email;
+    if (!emailToCheck) return false;
     try {
       const supabase = getSupabase();
       const { data } = await supabase
         .from('admin_users')
         .select('email')
-        .eq('email', user.email)
+        .eq('email', emailToCheck)
         .maybeSingle();
       return !!data;
     } catch {
