@@ -21,7 +21,7 @@ interface Relato {
   imagen_url: string | null;
   vistas: number;
   likes: number;
-  estado: 'borrador' | 'revision' | 'publicado' | 'archivado';
+  estado: 'borrador' | 'revision' | 'publicado' | 'destacado' | 'archivado' | string;
   created_at: string;
   updated_at: string;
   comment_count?: number;
@@ -32,9 +32,16 @@ interface Relato {
 
 // ─── Status config ────────────────────────────────────────────────────────────
 
-const STATUS_CONFIG = {
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; dot: string; icon: any }> = {
   publicado: {
     label: 'Publicado',
+    color: 'text-emerald-400',
+    bg: 'bg-emerald-400/10 border-emerald-400/30',
+    dot: 'bg-emerald-400',
+    icon: Globe
+  },
+  destacado: {
+    label: 'Destacado',
     color: 'text-emerald-400',
     bg: 'bg-emerald-400/10 border-emerald-400/30',
     dot: 'bg-emerald-400',
@@ -87,7 +94,7 @@ function StoryRow({
 
 }: {relato: Relato;onDelete: (id: string) => void;onPublish: (id: string) => void;}) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const cfg = STATUS_CONFIG[relato.estado];
+  const cfg = STATUS_CONFIG[relato.estado] ?? STATUS_CONFIG.borrador;
   const StatusIcon = cfg.icon;
 
   return (
@@ -356,7 +363,7 @@ export default function MisRelatosClient() {
 
   const counts = {
     todos: relatos.length,
-    publicado: relatos.filter((r) => r.estado === 'publicado').length,
+    publicado: relatos.filter((r) => r.estado === 'publicado' || r.estado === 'destacado').length,
     borrador: relatos.filter((r) => r.estado === 'borrador').length,
     revision: relatos.filter((r) => r.estado === 'revision').length,
     archivado: relatos.filter((r) => r.estado === 'archivado').length
