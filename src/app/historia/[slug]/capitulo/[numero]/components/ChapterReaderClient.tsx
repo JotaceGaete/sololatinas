@@ -81,31 +81,41 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
   const [mediaModal, setMediaModal] = useState<MediaModal | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
-  // Attach click handlers after each page render
+  // Single delegated click handler — survives dangerouslySetInnerHTML re-renders
   useEffect(() => {
     const el = contentRef.current;
     if (!el) return;
-    const cleanup: Array<() => void> = [];
 
-    // Inline images → lightbox
+    // Set cursor on inline images (cosmetic only, no listener here)
     el.querySelectorAll<HTMLImageElement>('img').forEach((img) => {
-      const handler = () => setLightboxSrc(img.src);
-      img.addEventListener('click', handler);
       img.style.cursor = 'zoom-in';
-      cleanup.push(() => img.removeEventListener('click', handler));
     });
 
-    // Narrative media blocks → media modal
-    el.querySelectorAll<HTMLElement>('[data-media-type]').forEach((block) => {
-      const type = block.dataset.mediaType as 'image' | 'video';
-      const url = block.dataset.mediaUrl ?? '';
-      if (!url) return;
-      const handler = () => setMediaModal({ type, url });
-      block.addEventListener('click', handler);
-      cleanup.push(() => block.removeEventListener('click', handler));
-    });
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
 
-    return () => cleanup.forEach((fn) => fn());
+      // Narrative media reveal block takes priority
+      const mediaBlock = target.closest<HTMLElement>('[data-media-type]');
+      if (mediaBlock && el.contains(mediaBlock)) {
+        const type = mediaBlock.dataset.mediaType as 'image' | 'video';
+        const url = mediaBlock.dataset.mediaUrl ?? '';
+        console.log('[ChapterReader] media block clicked:', { type, url });
+        if (url) {
+          setMediaModal({ type, url });
+        }
+        return;
+      }
+
+      // Inline image → lightbox
+      const img = target.closest<HTMLImageElement>('img');
+      if (img && el.contains(img)) {
+        console.log('[ChapterReader] inline image clicked:', img.src);
+        setLightboxSrc(img.src);
+      }
+    };
+
+    el.addEventListener('click', handleClick);
+    return () => el.removeEventListener('click', handleClick);
   }, [currentPage]);
 
   const pages = useMemo(
@@ -334,11 +344,11 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
       {lightboxSrc && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4"
-          onClick={() => setLightboxSrc(null)}
+          onClick={() => { console.log('[ChapterReader] lightbox closed'); setLightboxSrc(null); }}
         >
           <button
             className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors"
-            onClick={() => setLightboxSrc(null)}
+            onClick={() => { console.log('[ChapterReader] lightbox closed via button'); setLightboxSrc(null); }}
           >
             <X size={24} />
           </button>
@@ -356,11 +366,11 @@ export default function ChapterReaderClient({ story, capitulo, allCapitulos }: P
       {mediaModal && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/92 p-4"
-          onClick={() => setMediaModal(null)}
+          onClick={() => { console.log('[ChapterReader] media modal closed (backdrop)'); setMediaModal(null); }}
         >
           <button
             className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors z-10"
-            onClick={() => setMediaModal(null)}
+            onClick={(e) => { e.stopPropagation(); console.log('[ChapterReader] media modal closed (button)'); setMediaModal(null); }}
           >
             <X size={24} />
           </button>
