@@ -27,6 +27,7 @@ const HEADING_OPTIONS = [
 
 const IMAGE_LABELS = ['Ver imagen', 'Ver ilustración', 'Ver escena', 'Ver retrato'];
 const VIDEO_LABELS = ['Ver video', 'Ver escena', 'Ver clip'];
+const EDITOR_PREVIEW_SELECTOR = '.ch-editor-media-preview';
 
 // Popover state machine
 type Popover =
@@ -42,6 +43,71 @@ interface HoverBlock {
   top: number;
   left: number;
   width: number;
+}
+
+function getVideoId(url: string): string | null {
+  const match = url.match(/(?:youtube\.com\/watch\?v=|youtube\.com\/embed\/|youtu\.be\/)([^&?\s/]+)/);
+  return match?.[1] ?? null;
+}
+
+function isDirectVideo(url: string): boolean {
+  return /\.(mp4|webm|ogg|mov)(\?|$)/i.test(url);
+}
+
+function getBlockLabel(block: HTMLElement): string {
+  const clone = block.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll(EDITOR_PREVIEW_SELECTOR).forEach((el) => el.remove());
+  return clone.textContent?.trim() || (block.dataset.mediaType === 'video' ? 'Ver video' : 'Ver imagen');
+}
+
+function serializeEditorHtml(editor: HTMLElement): string {
+  const clone = editor.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll(EDITOR_PREVIEW_SELECTOR).forEach((el) => el.remove());
+  return clone.innerHTML;
+}
+
+function buildEditorMediaPreview(type: 'image' | 'video', url: string) {
+  const preview = document.createElement('div');
+  preview.className = 'ch-editor-media-preview';
+  preview.setAttribute('contenteditable', 'false');
+
+  if (type === 'image') {
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    preview.appendChild(img);
+    return preview;
+  }
+
+  const videoId = getVideoId(url);
+  if (videoId) {
+    const img = document.createElement('img');
+    img.src = `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`;
+    img.alt = '';
+    preview.appendChild(img);
+  } else if (isDirectVideo(url)) {
+    const video = document.createElement('video');
+    video.src = url;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'metadata';
+    preview.appendChild(video);
+  }
+
+  const meta = document.createElement('div');
+  meta.className = 'ch-editor-media-meta';
+  meta.textContent = videoId ? `YouTube · ${url}` : `Video · ${url}`;
+  preview.appendChild(meta);
+  return preview;
+}
+
+function decorateMediaBlocks(editor: HTMLElement) {
+  editor.querySelectorAll<HTMLElement>('.ch-reveal-block, .ch-media-block').forEach((block) => {
+    const type = block.dataset.mediaType === 'video' ? 'video' : 'image';
+    const url = block.dataset.mediaUrl ?? '';
+    if (!url || block.querySelector(EDITOR_PREVIEW_SELECTOR)) return;
+    block.appendChild(buildEditorMediaPreview(type, url));
+  });
 }
 
 export default function ChapterRichEditor({ value, onChange, placeholder, userId, minHeight = 500 }: Props) {
@@ -63,6 +129,7 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
       if (editorRef.current.innerHTML !== value) {
         editorRef.current.innerHTML = value || '';
       }
+      decorateMediaBlocks(editorRef.current);
     }
     isInternalUpdate.current = false;
   }, [value]);
@@ -73,6 +140,7 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
     const wrap = wrapRef.current;
     if (!editor || !wrap) return;
     const cleanup: Array<() => void> = [];
+    decorateMediaBlocks(editor);
 
     editor.querySelectorAll<HTMLElement>('.ch-reveal-block, .ch-media-block').forEach((block) => {
       const enter = () => {
@@ -94,7 +162,10 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
   const notify = useCallback(() => {
     if (editorRef.current) {
       isInternalUpdate.current = true;
-      onChange(editorRef.current.innerHTML);
+      onChange(serializeEditorHtml(editorRef.current));
+      requestAnimationFrame(() => {
+        if (editorRef.current) decorateMediaBlocks(editorRef.current);
+      });
     }
   }, [onChange]);
 
@@ -127,9 +198,11 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
 
     if (target) {
       // Editing an existing block
+      target.querySelectorAll(EDITOR_PREVIEW_SELECTOR).forEach((el) => el.remove());
       target.setAttribute('data-media-type', type);
       target.setAttribute('data-media-url', url);
       target.textContent = label;
+      decorateMediaBlocks(editor);
       notify();
       return;
     }
@@ -165,6 +238,7 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
     newRange.setStart(gap, 0);
     newRange.collapse(true);
     if (sel) { sel.removeAllRanges(); sel.addRange(newRange); }
+    decorateMediaBlocks(editor);
 
     console.log('[ChapterRichEditor] applyRevealBlock: has data-media-type:', editor.querySelector('[data-media-type]') !== null);
     notify();
@@ -225,7 +299,7 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
   const handleHoverReplace = () => {
     if (!hoverBlock) return;
     const mediaType = (hoverBlock.el.dataset.mediaType as 'image' | 'video') ?? 'image';
-    const currentLabel = hoverBlock.el.textContent ?? IMAGE_LABELS[0];
+    const currentLabel = getBlockLabel(hoverBlock.el);
     captureRange();
     if (mediaType === 'image') {
       setPopover({ phase: 'upload', label: currentLabel, target: hoverBlock.el });
@@ -561,12 +635,11 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
         .ch-figcaption:empty::before { content: attr(data-placeholder); opacity: 0.4; pointer-events: none; }
         .ch-reveal-block, .ch-media-block {
           display: block;
-          width: fit-content;
-          max-width: 260px;
+          width: min(100%, 420px);
           margin: 1.5rem auto;
-          padding: 0.5rem 1.75rem;
+          padding: 0.65rem;
           border: 1px solid rgba(201,169,110,0.3);
-          border-radius: 999px;
+          border-radius: 0.9rem;
           color: #C9A96E;
           font-size: 0.75rem;
           letter-spacing: 0.1em;
@@ -580,6 +653,32 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
           content: '✦ ';
           opacity: 0.5;
           font-size: 0.6rem;
+        }
+        .ch-editor-media-preview {
+          margin-top: 0.65rem;
+          overflow: hidden;
+          border-radius: 0.65rem;
+          border: 1px solid rgba(201,169,110,0.22);
+          background: rgba(13,11,10,0.72);
+          color: #9A8A7A;
+          letter-spacing: 0;
+          font-family: var(--font-sans, sans-serif);
+          font-size: 0.68rem;
+          line-height: 1.35;
+        }
+        .ch-editor-media-preview img,
+        .ch-editor-media-preview video {
+          display: block;
+          width: 100%;
+          aspect-ratio: 16 / 9;
+          object-fit: cover;
+          background: #0D0B0A;
+        }
+        .ch-editor-media-meta {
+          padding: 0.55rem 0.7rem;
+          overflow-wrap: anywhere;
+          text-align: left;
+          color: #9A8A7A;
         }
       `}</style>
     </div>
