@@ -28,6 +28,8 @@ const HEADING_OPTIONS = [
 const IMAGE_LABELS = ['Ver imagen', 'Ver ilustración', 'Ver escena', 'Ver retrato'];
 const VIDEO_LABELS = ['Ver video', 'Ver escena', 'Ver clip'];
 const EDITOR_PREVIEW_SELECTOR = '.ch-editor-media-preview';
+const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+const MAX_VIDEO_UPLOAD_BYTES = 250 * 1024 * 1024;
 
 // Popover state machine
 type Popover =
@@ -88,6 +90,7 @@ function buildEditorMediaPreview(type: 'image' | 'video', url: string) {
   } else if (isDirectVideo(url)) {
     const video = document.createElement('video');
     video.src = url;
+    video.controls = true;
     video.muted = true;
     video.playsInline = true;
     video.preload = 'metadata';
@@ -96,7 +99,7 @@ function buildEditorMediaPreview(type: 'image' | 'video', url: string) {
 
   const meta = document.createElement('div');
   meta.className = 'ch-editor-media-meta';
-  meta.textContent = videoId ? `YouTube · ${url}` : `Video · ${url}`;
+  meta.textContent = videoId ? 'Video de YouTube' : 'Video subido';
   preview.appendChild(meta);
   return preview;
 }
@@ -287,6 +290,35 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
     setVideoUrl('');
     setPopover(null);
   }, [popover, videoUrl, applyRevealBlock]);
+
+  const handleRevealVideoUpload = useCallback(async (file: File) => {
+    if (!popover || popover.phase !== 'url') return;
+    const { label, target } = popover;
+
+    if (!ALLOWED_VIDEO_TYPES.has(file.type)) {
+      toast.error('Formato no soportado. Usa MP4, WebM o MOV.');
+      return;
+    }
+
+    if (file.size > MAX_VIDEO_UPLOAD_BYTES) {
+      toast.error('El video es demasiado grande. Máximo 250 MB.');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const body = new FormData();
+      body.append('file', file); body.append('userId', userId); body.append('folder', 'chapter_videos');
+      const res = await fetch('/api/r2/upload', { method: 'POST', body });
+      if (!res.ok) throw new Error('Upload failed');
+      const { publicUrl } = await res.json();
+      applyRevealBlock('video', publicUrl, label, target);
+      setVideoUrl('');
+      setPopover(null);
+    } catch (err: any) {
+      toast.error('Error al subir video: ' + (err?.message ?? ''));
+    } finally { setUploading(false); }
+  }, [popover, userId, applyRevealBlock]);
 
   // ── Hover block actions ───────────────────────────────────────────────────────
   const handleHoverEditLabel = () => {
@@ -497,7 +529,7 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
                       ? '¿Cómo llamar esta escena?'
                       : (popover as any).mediaType === 'image'
                         ? 'Sube la imagen'
-                        : 'Pega el enlace'}
+                        : 'Agrega el video'}
                 </p>
               </div>
               <button type="button" onClick={() => { setPopover(null); setVideoUrl(''); }}
@@ -598,6 +630,14 @@ export default function ChapterRichEditor({ value, onChange, placeholder, userId
                     className="w-full bg-[#0D0B0A] border border-[#2E2420] rounded-xl px-3 py-2.5 text-sm text-[#F5EFE6] placeholder-[#9A8A7A]/50 outline-none focus:border-[#C9A96E]/40 transition-colors"
                     autoFocus
                   />
+                  <label className={`mt-3 flex flex-col items-center gap-2 px-4 py-4 rounded-xl border border-dashed cursor-pointer transition-all ${uploading ? 'border-primary/40 bg-primary/5' : 'border-[#2E2420] hover:border-[#C9A96E]/40 hover:bg-[#C9A96E]/5'}`}>
+                    {uploading
+                      ? <><Loader2 size={18} className="animate-spin text-[#C9A96E]" /><span className="text-xs text-[#9A8A7A]">Subiendo video…</span></>
+                      : <><Play size={18} className="text-[#C9A96E]/60" /><span className="text-xs text-[#9A8A7A]">Subir video desde dispositivo</span><span className="text-[10px] text-[#9A8A7A]/60">MP4, WebM o MOV</span></>
+                    }
+                    <input type="file" accept="video/mp4,video/webm,video/quicktime,video/*" className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleRevealVideoUpload(f); e.target.value = ''; }} />
+                  </label>
                   <button
                     type="button"
                     onClick={handleRevealVideoInsert}

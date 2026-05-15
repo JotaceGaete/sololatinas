@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import type { SupabaseRelato } from '@/lib/supabase/mappers';
