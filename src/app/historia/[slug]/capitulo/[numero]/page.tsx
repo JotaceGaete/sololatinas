@@ -1,3 +1,5 @@
+export const runtime = 'edge';
+
 import { notFound } from 'next/navigation';
 import { redirect } from 'next/navigation';
 import { getRelatoBySlug, getPublishedCapitulosByRelatoId } from '@/lib/supabase/queries';

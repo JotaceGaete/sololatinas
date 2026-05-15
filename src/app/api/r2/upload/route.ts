@@ -1,14 +1,30 @@
-import { createHmac, createHash } from 'crypto';
 import { NextResponse } from 'next/server';
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 
-function sha256Hex(value: string | Uint8Array) {
-  return createHash('sha256').update(value).digest('hex');
+const textEncoder = new TextEncoder();
+
+function toBytes(value: string | Uint8Array) {
+  return typeof value === 'string' ? textEncoder.encode(value) : value;
 }
 
-function hmac(key: Buffer | Uint8Array | string, value: string) {
-  return createHmac('sha256', key).update(value).digest();
+function toHex(buffer: ArrayBuffer | Uint8Array) {
+  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function sha256Hex(value: string | Uint8Array) {
+  return toHex(await crypto.subtle.digest('SHA-256', toBytes(value)));
+}
+
+async function hmac(key: string | Uint8Array, value: string) {
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    toBytes(key),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  return new Uint8Array(await crypto.subtle.sign('HMAC', cryptoKey, textEncoder.encode(value)));
 }
 
 function encodePath(path: string) {
@@ -29,8 +45,14 @@ function extensionFrom(file: File) {
   if (fromName && /^[a-z0-9]+$/.test(fromName)) return fromName;
   if (file.type === 'image/png') return 'png';
   if (file.type === 'image/webp') return 'webp';
+  if (file.type === 'video/mp4') return 'mp4';
+  if (file.type === 'video/webm') return 'webm';
+  if (file.type === 'video/quicktime') return 'mov';
   return 'jpg';
 }
+
+const ALLOWED_VIDEO_TYPES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
+const MAX_VIDEO_SIZE_BYTES = 250 * 1024 * 1024;
 
 export async function POST(request: Request) {
   const endpoint = process.env.R2_ENDPOINT?.trim().replace(/\/+$/, '');
@@ -51,8 +73,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Missing file' }, { status: 400 });
   }
 
-  if (!file.type.startsWith('image/')) {
-    return NextResponse.json({ error: 'Only images are allowed' }, { status: 400 });
+  const isImage = file.type.startsWith('image/');
+  const isAllowedVideo = ALLOWED_VIDEO_TYPES.has(file.type);
+
+  if (!isImage && !isAllowedVideo) {
+    return NextResponse.json({ error: 'Only images and supported videos are allowed' }, { status: 400 });
+  }
+
+  if (isAllowedVideo && file.size > MAX_VIDEO_SIZE_BYTES) {
+    return NextResponse.json({ error: 'Video file is too large' }, { status: 400 });
   }
 
   const body = new Uint8Array(await file.arrayBuffer());
@@ -63,7 +92,7 @@ export async function POST(request: Request) {
   const service = 's3';
   const key = `${folder}/${userId || 'anonymous'}/${Date.now()}.${extensionFrom(file)}`;
   const url = new URL(`${endpoint}/${bucket}/${encodePath(key)}`);
-  const payloadHash = sha256Hex(body);
+  const payloadHash = await sha256Hex(body);
   const host = url.host;
   const canonicalUri = url.pathname;
   const canonicalHeaders = [
@@ -85,14 +114,14 @@ export async function POST(request: Request) {
     'AWS4-HMAC-SHA256',
     amzDate,
     credentialScope,
-    sha256Hex(canonicalRequest),
+    await sha256Hex(canonicalRequest),
   ].join('\n');
 
-  const signingKey = hmac(
-    hmac(hmac(hmac(`AWS4${secretAccessKey}`, dateStamp), region), service),
-    'aws4_request'
-  );
-  const signature = createHmac('sha256', signingKey).update(stringToSign).digest('hex');
+  const dateKey = await hmac(`AWS4${secretAccessKey}`, dateStamp);
+  const regionKey = await hmac(dateKey, region);
+  const serviceKey = await hmac(regionKey, service);
+  const signingKey = await hmac(serviceKey, 'aws4_request');
+  const signature = toHex(await hmac(signingKey, stringToSign));
   const authorization = [
     `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}`,
     `SignedHeaders=${signedHeaders}`,
