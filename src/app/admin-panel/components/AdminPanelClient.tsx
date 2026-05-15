@@ -676,7 +676,15 @@ export default function AdminPanelClient() {
                               </div>
                             </td>
                             <td className="p-4">
-                              <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <div className="flex items-center justify-end gap-1">
+                                <Link
+                                  href={`/admin-panel/relatos/${story.id}`}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-primary border border-primary/30 rounded-md hover:bg-primary/10 transition-all"
+                                  title="Ver relato completo"
+                                >
+                                  <Eye size={14} />
+                                  Ver relato
+                                </Link>
                                 {currentStatus === 'revision' && (
                                   <>
                                     <button
