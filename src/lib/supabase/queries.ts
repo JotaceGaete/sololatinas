@@ -1,6 +1,11 @@
 import { createClient } from './server';
 import type { Author, Capitulo, Story } from '@/lib/stories/types';
-import { isPublishedRelato, mapCapituloToModel, mapRelatoToStory, mapProfileToAuthor } from './mappers';
+import {
+  isPublishedRelato,
+  mapCapituloToModel,
+  mapRelatoToStory,
+  mapProfileToAuthor,
+} from './mappers';
 import type { SupabaseCapitulo, SupabaseRelato, SupabaseProfile } from './mappers';
 
 export type { SupabaseCapitulo, SupabaseRelato, SupabaseProfile };
@@ -17,7 +22,11 @@ export async function getPublishedStories(): Promise<Story[]> {
       .order('published_at', { ascending: false });
 
     if (error) {
-      console.error('[getPublishedStories] published_at order failed, retrying with created_at:', error.message, error.details);
+      console.error(
+        '[getPublishedStories] published_at order failed, retrying with created_at:',
+        error.message,
+        error.details
+      );
       ({ data, error } = await supabase
         .from('relatos')
         .select('*')
@@ -30,11 +39,18 @@ export async function getPublishedStories(): Promise<Story[]> {
     }
     console.log('[getPublishedStories] total recibidos:', data.length);
     if (data.length > 0) {
-      console.log('[getPublishedStories] campos de estado (primeros 3):', data.slice(0, 3).map((r: Record<string, unknown>) => ({
-        id: r['id'], status: r['status'], estado: r['estado'],
-        published: r['published'], is_published: r['is_published'],
-        destacado: r['destacado'], moderation_status: r['moderation_status'],
-      })));
+      console.log(
+        '[getPublishedStories] campos de estado (primeros 3):',
+        data.slice(0, 3).map((r: Record<string, unknown>) => ({
+          id: r['id'],
+          status: r['status'],
+          estado: r['estado'],
+          published: r['published'],
+          is_published: r['is_published'],
+          destacado: r['destacado'],
+          moderation_status: r['moderation_status'],
+        }))
+      );
     }
     const published = (data as SupabaseRelato[]).filter(isPublishedRelato);
     console.log('[getPublishedStories] pasan isPublishedRelato:', published.length);
@@ -54,6 +70,7 @@ export async function getRelatoBySlug(slug: string): Promise<Story | null> {
       .eq('slug', slug)
       .maybeSingle();
     if (error || !data) return null;
+    if (!isPublishedRelato(data as SupabaseRelato)) return null;
     return mapRelatoToStory(data as SupabaseRelato);
   } catch {
     return null;
@@ -97,7 +114,10 @@ export async function getCapitulosByRelatoId(relatoId: string): Promise<Capitulo
   }
 }
 
-export async function getCapituloByNumero(relatoId: string, numero: number): Promise<Capitulo | null> {
+export async function getCapituloByNumero(
+  relatoId: string,
+  numero: number
+): Promise<Capitulo | null> {
   try {
     const supabase = await createClient();
     const { data, error } = await supabase
@@ -127,13 +147,12 @@ export async function getAuthors(): Promise<Author[]> {
 
     const profiles = data as SupabaseProfile[];
     const supabase2 = await createClient();
-    const { data: relatos } = await supabase2
-      .from('relatos')
-      .select('*');
+    const { data: relatos } = await supabase2.from('relatos').select('*');
     const publicStories = ((relatos ?? []) as SupabaseRelato[]).filter(isPublishedRelato);
     const withCounts = profiles.map((p) => ({
       ...p,
-      story_count: publicStories.filter((story) => (story.autor_id ?? story.author_id) === p.id).length,
+      story_count: publicStories.filter((story) => (story.autor_id ?? story.author_id) === p.id)
+        .length,
     }));
     return withCounts.map(mapProfileToAuthor);
   } catch {

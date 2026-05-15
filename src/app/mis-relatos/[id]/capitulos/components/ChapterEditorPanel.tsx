@@ -10,6 +10,8 @@ import ChapterRichEditor from './ChapterRichEditor';
 interface Props {
   capitulo: Capitulo;
   userId: string;
+  storyId?: string;
+  isInitial?: boolean;
   onUpdated: (updated: Capitulo) => void;
   onDeleted: (id: string) => void;
 }
@@ -17,7 +19,11 @@ interface Props {
 type SaveStatus = 'idle' | 'unsaved' | 'saving' | 'saved' | 'error';
 
 function wordCount(html: string) {
-  return html.replace(/<[^>]*>/g, ' ').trim().split(/\s+/).filter(Boolean).length;
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean).length;
 }
 
 function readingMinutes(html: string) {
@@ -25,26 +31,31 @@ function readingMinutes(html: string) {
 }
 
 function SaveBadge({ status }: { status: SaveStatus }) {
-  if (status === 'saving') return (
-    <span className="flex items-center gap-1 text-xs text-muted-foreground">
-      <Loader2 size={11} className="animate-spin" /> Guardando…
-    </span>
-  );
-  if (status === 'saved') return (
-    <span className="flex items-center gap-1 text-xs text-emerald-400">
-      <Check size={11} /> Guardado
-    </span>
-  );
-  if (status === 'error') return (
-    <span className="text-xs text-rose-400">Error al guardar</span>
-  );
-  if (status === 'unsaved') return (
-    <span className="text-xs text-amber-400/70">Sin guardar</span>
-  );
+  if (status === 'saving')
+    return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+        <Loader2 size={11} className="animate-spin" /> Guardando…
+      </span>
+    );
+  if (status === 'saved')
+    return (
+      <span className="flex items-center gap-1 text-xs text-emerald-400">
+        <Check size={11} /> Guardado
+      </span>
+    );
+  if (status === 'error') return <span className="text-xs text-rose-400">Error al guardar</span>;
+  if (status === 'unsaved') return <span className="text-xs text-amber-400/70">Sin guardar</span>;
   return null;
 }
 
-export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDeleted }: Props) {
+export default function ChapterEditorPanel({
+  capitulo,
+  userId,
+  storyId,
+  isInitial = false,
+  onUpdated,
+  onDeleted,
+}: Props) {
   const [titulo, setTitulo] = useState(capitulo.titulo);
   const [cuerpo, setCuerpo] = useState(capitulo.cuerpo);
   const [estado, setEstado] = useState<'draft' | 'publicado'>(
@@ -76,24 +87,37 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
     };
   }, []);
 
-  const scheduleAutosave = useCallback((t: string, c: string) => {
-    pendingRef.current = { titulo: t, cuerpo: c };
-    if (autosaveTimeout.current) clearTimeout(autosaveTimeout.current);
-    autosaveTimeout.current = setTimeout(async () => {
-      if (!pendingRef.current) return;
-      const { titulo: pt, cuerpo: pc } = pendingRef.current;
-      setSaveStatus('saving');
-      const { error } = await supabase
-        .from('historia_capitulos')
-        .update({ titulo: pt.trim(), cuerpo_html: pc })
-        .eq('id', capitulo.id);
-      if (!error) {
-        pendingRef.current = null;
-        setSaveStatus('saved');
-        onUpdated({ ...capitulo, titulo: pt.trim(), cuerpo: pc, extracto: '' });
-      }
-    }, 30_000);
-  }, [capitulo, supabase, onUpdated]);
+  const scheduleAutosave = useCallback(
+    (t: string, c: string) => {
+      pendingRef.current = { titulo: t, cuerpo: c };
+      if (autosaveTimeout.current) clearTimeout(autosaveTimeout.current);
+      autosaveTimeout.current = setTimeout(async () => {
+        if (!pendingRef.current) return;
+        const { titulo: pt, cuerpo: pc } = pendingRef.current;
+        setSaveStatus('saving');
+        const { error } = isInitial
+          ? await supabase
+              .from('relatos')
+              .update({
+                title: pt.trim() || capitulo.titulo,
+                titulo: pt.trim() || capitulo.titulo,
+                content: pc,
+                cuerpo: pc,
+              })
+              .eq('id', storyId ?? capitulo.relatoId)
+          : await supabase
+              .from('historia_capitulos')
+              .update({ titulo: pt.trim(), cuerpo_html: pc })
+              .eq('id', capitulo.id);
+        if (!error) {
+          pendingRef.current = null;
+          setSaveStatus('saved');
+          onUpdated({ ...capitulo, titulo: pt.trim(), cuerpo: pc, extracto: '' });
+        }
+      }, 30_000);
+    },
+    [capitulo, isInitial, storyId, supabase, onUpdated]
+  );
 
   const handleTituloChange = (val: string) => {
     tituloRef.current = val;
@@ -122,27 +146,50 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
     console.log('[save chapter] has ch-media-block:', currentCuerpo.includes('ch-media-block'));
     console.log('[save chapter] cuerpo_html snippet:', currentCuerpo.slice(0, 300));
 
-    const { error } = await supabase
-      .from('historia_capitulos')
-      .update({ titulo: currentTitulo, cuerpo_html: currentCuerpo, estado: 'draft' })
-      .eq('id', capitulo.id);
+    const { error } = isInitial
+      ? await supabase
+          .from('relatos')
+          .update({
+            title: currentTitulo || capitulo.titulo,
+            titulo: currentTitulo || capitulo.titulo,
+            content: currentCuerpo,
+            cuerpo: currentCuerpo,
+            lectura_minutos: readingMinutes(currentCuerpo),
+            tiempo_lectura: readingMinutes(currentCuerpo),
+          })
+          .eq('id', storyId ?? capitulo.relatoId)
+      : await supabase
+          .from('historia_capitulos')
+          .update({ titulo: currentTitulo, cuerpo_html: currentCuerpo, estado: 'draft' })
+          .eq('id', capitulo.id);
     if (error) {
       setSaveStatus('error');
       toast.error('Error al guardar: ' + error.message);
     } else {
       setSaveStatus('saved');
-      setEstado('draft');
+      if (!isInitial) setEstado('draft');
       toast.success('Cambios guardados');
       onUpdated({ ...capitulo, titulo: currentTitulo, cuerpo: currentCuerpo, extracto: '' });
     }
-  }, [capitulo, supabase, onUpdated]);
+  }, [capitulo, isInitial, storyId, supabase, onUpdated]);
 
   // ── Publish ───────────────────────────────────────────────────────────────────
   const handlePublish = useCallback(async () => {
+    if (isInitial) {
+      await handleSaveDraft();
+      toast.info('El contenido inicial se publica junto con el estado del relato.');
+      return;
+    }
     const currentTitulo = tituloRef.current.trim();
     const currentCuerpo = cuerpoRef.current;
-    if (!currentTitulo) { toast.error('El capítulo necesita un título'); return; }
-    if (wordCount(currentCuerpo) < 10) { toast.error('El capítulo necesita contenido'); return; }
+    if (!currentTitulo) {
+      toast.error('El capítulo necesita un título');
+      return;
+    }
+    if (wordCount(currentCuerpo) < 10) {
+      toast.error('El capítulo necesita contenido');
+      return;
+    }
 
     setPublishing(true);
     if (autosaveTimeout.current) clearTimeout(autosaveTimeout.current);
@@ -167,10 +214,14 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
       toast.success('Capítulo publicado');
       onUpdated({ ...capitulo, titulo: currentTitulo, cuerpo: currentCuerpo, extracto: '' });
     }
-  }, [capitulo, supabase, onUpdated]);
+  }, [capitulo, handleSaveDraft, isInitial, supabase, onUpdated]);
 
   // ── Unpublish ─────────────────────────────────────────────────────────────────
   const handleUnpublish = useCallback(async () => {
+    if (isInitial) {
+      toast.info('El contenido inicial usa el estado de publicación del relato.');
+      return;
+    }
     const { error } = await supabase
       .from('historia_capitulos')
       .update({ estado: 'draft', published_at: null })
@@ -180,12 +231,21 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
     } else {
       setEstado('draft');
       toast.success('Capítulo movido a borrador');
-      onUpdated({ ...capitulo, titulo: tituloRef.current, cuerpo: cuerpoRef.current, extracto: '' });
+      onUpdated({
+        ...capitulo,
+        titulo: tituloRef.current,
+        cuerpo: cuerpoRef.current,
+        extracto: '',
+      });
     }
-  }, [capitulo, supabase, onUpdated]);
+  }, [capitulo, isInitial, supabase, onUpdated]);
 
   // ── Delete ────────────────────────────────────────────────────────────────────
   const handleDelete = async () => {
+    if (isInitial) {
+      toast.error('El contenido inicial del relato no se elimina desde capítulos.');
+      return;
+    }
     if (!confirm(`¿Eliminar el capítulo ${capitulo.numero}? Esta acción es irreversible.`)) return;
     const { error } = await supabase.from('historia_capitulos').delete().eq('id', capitulo.id);
     if (error) {
@@ -279,10 +339,15 @@ export default function ChapterEditorPanel({ capitulo, userId, onUpdated, onDele
                 disabled={publishing}
                 className="flex items-center gap-1.5 px-4 py-1.5 text-xs bg-primary text-noir font-semibold rounded-lg hover:bg-primary/90 transition-all disabled:opacity-50"
               >
-                {publishing
-                  ? <><Loader2 size={11} className="animate-spin" /> Publicando…</>
-                  : <><Send size={11} /> Publicar capítulo</>
-                }
+                {publishing ? (
+                  <>
+                    <Loader2 size={11} className="animate-spin" /> Publicando…
+                  </>
+                ) : (
+                  <>
+                    <Send size={11} /> Publicar capítulo
+                  </>
+                )}
               </button>
             </>
           )}

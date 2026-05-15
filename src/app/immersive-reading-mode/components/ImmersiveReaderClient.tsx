@@ -10,7 +10,27 @@ import { isPublishedRelato, mapRelatoToStory } from '@/lib/supabase/mappers';
 import type { Story } from '@/lib/stories/types';
 import { renderStoryHtml, splitIntoPages } from '@/lib/stories/render';
 import type { SupabaseRelato } from '@/lib/supabase/mappers';
-import { X, ChevronLeft, BookmarkPlus, Share2, Heart, Sun, Moon, Coffee, Type, Minus, Plus, Eye, BookOpen, AlignJustify, ArrowLeft, ArrowRight, Library, Sparkles, CheckCircle } from 'lucide-react';
+import {
+  X,
+  ChevronLeft,
+  BookmarkPlus,
+  Share2,
+  Heart,
+  Sun,
+  Moon,
+  Coffee,
+  Type,
+  Minus,
+  Plus,
+  Eye,
+  BookOpen,
+  AlignJustify,
+  ArrowLeft,
+  ArrowRight,
+  Library,
+  Sparkles,
+  CheckCircle,
+} from 'lucide-react';
 import StoryReactions from './StoryReactions';
 import StoryComments from './StoryComments';
 
@@ -18,11 +38,40 @@ type ReaderTheme = 'dark' | 'sepia' | 'cream';
 type ReadingMode = 'paginated' | 'scroll';
 type FontFamily = 'serif' | 'sans';
 
+interface MediaModal {
+  type: 'image' | 'video';
+  url: string;
+  alt: string;
+  openNonce: number;
+}
+
+function getVideoEmbed(url: string): string {
+  const yt = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
+  if (yt) return `https://www.youtube.com/embed/${yt[1]}?autoplay=1`;
+  const vi = url.match(/vimeo\.com\/(\d+)/);
+  if (vi) return `https://player.vimeo.com/video/${vi[1]}?autoplay=1`;
+  return url;
+}
+
+function isDirectVideo(url: string): boolean {
+  return /\.(mp4|webm|ogg|mov)(\?|$)/i.test(url);
+}
+
 const WORDS_PER_PAGE_MIN = 1200;
 const WORDS_PER_PAGE_MAX = 1800;
 const TARGET_WORDS_PER_PAGE = 1500;
 
-const themeConfig: Record<ReaderTheme, { bg: string; text: string; label: string; icon: React.ReactNode; panelBg: string; borderColor: string }> = {
+const themeConfig: Record<
+  ReaderTheme,
+  {
+    bg: string;
+    text: string;
+    label: string;
+    icon: React.ReactNode;
+    panelBg: string;
+    borderColor: string;
+  }
+> = {
   dark: {
     bg: 'bg-[#0D0B0A]',
     text: 'text-[#F5EFE6]',
@@ -97,21 +146,32 @@ export default function ImmersiveReaderClient() {
           .limit(5);
 
         if (relatoId) {
-          const [{ data: selected }, { data: relatedData }, { count: chapterCount }] = await Promise.all([
-            supabase.from('relatos').select('*').eq('id', relatoId).maybeSingle(),
-            relatedQuery.neq('id', relatoId),
-            supabase.from('historia_capitulos').select('id', { count: 'exact', head: true }).eq('historia_id', relatoId),
-          ]);
+          const [{ data: selected }, { data: relatedData }, { count: chapterCount }] =
+            await Promise.all([
+              supabase.from('relatos').select('*').eq('id', relatoId).maybeSingle(),
+              relatedQuery.neq('id', relatoId),
+              supabase
+                .from('historia_capitulos')
+                .select('id', { count: 'exact', head: true })
+                .eq('historia_id', relatoId),
+            ]);
 
           const selectedRelato = selected as SupabaseRelato | null;
-          const mappedStory = selectedRelato && isPublishedRelato(selectedRelato)
-            ? mapRelatoToStory({ ...selectedRelato, chapter_count: chapterCount ?? 0 })
-            : null;
+          const mappedStory =
+            selectedRelato && isPublishedRelato(selectedRelato)
+              ? mapRelatoToStory({ ...selectedRelato, chapter_count: chapterCount ?? 0 })
+              : null;
           setStory(mappedStory);
-          setRelated(((relatedData ?? []) as SupabaseRelato[]).filter(isPublishedRelato).map(mapRelatoToStory));
+          setRelated(
+            ((relatedData ?? []) as SupabaseRelato[])
+              .filter(isPublishedRelato)
+              .map(mapRelatoToStory)
+          );
         } else {
           const { data } = await relatedQuery;
-          const stories = ((data ?? []) as SupabaseRelato[]).filter(isPublishedRelato).map(mapRelatoToStory);
+          const stories = ((data ?? []) as SupabaseRelato[])
+            .filter(isPublishedRelato)
+            .map(mapRelatoToStory);
           setStory(stories[0] ?? null);
           setRelated(stories.slice(1));
         }
@@ -126,8 +186,8 @@ export default function ImmersiveReaderClient() {
     fetchStory();
   }, [relatoId]);
 
-  const fullText = useMemo(() => story ? (story.fullText || story.excerpt) : '', [story]);
-  const pages = useMemo(() => story ? splitIntoPagesLocal(fullText) : [''], [story, fullText]);
+  const fullText = useMemo(() => (story ? story.fullText || story.excerpt : ''), [story]);
+  const pages = useMemo(() => (story ? splitIntoPagesLocal(fullText) : ['']), [story, fullText]);
   const totalPages = pages.length;
 
   const [theme, setTheme] = useState<ReaderTheme>('dark');
@@ -144,6 +204,8 @@ export default function ImmersiveReaderClient() {
   const [showEndScreen, setShowEndScreen] = useState(false);
   const [modePickerOpen, setModePickerOpen] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [lightboxSrc, setLightboxSrc] = useState<string | null>(null);
+  const [mediaModal, setMediaModal] = useState<MediaModal | null>(null);
 
   useEffect(() => {
     if (story) setLikeCount(story.likes);
@@ -167,23 +229,27 @@ export default function ImmersiveReaderClient() {
   }, [readingMode]);
 
   // Paginated progress
-  const paginatedProgress = readingMode === 'paginated' ? Math.round((currentPage / totalPages) * 100) : scrollProgress;
+  const paginatedProgress =
+    readingMode === 'paginated' ? Math.round((currentPage / totalPages) * 100) : scrollProgress;
 
   const scrollToTop = useCallback(() => {
     pageTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const goToPage = useCallback((page: number) => {
-    if (page < 1 || page > totalPages) return;
-    setCurrentPage(page);
-    scrollToTop();
-    if (page === totalPages) {
-      setTimeout(() => setShowEndScreen(true), 400);
-    } else {
-      setShowEndScreen(false);
-    }
-  }, [totalPages, scrollToTop]);
+  const goToPage = useCallback(
+    (page: number) => {
+      if (page < 1 || page > totalPages) return;
+      setCurrentPage(page);
+      scrollToTop();
+      if (page === totalPages) {
+        setTimeout(() => setShowEndScreen(true), 400);
+      } else {
+        setShowEndScreen(false);
+      }
+    },
+    [totalPages, scrollToTop]
+  );
 
   const handleNextPage = () => {
     if (currentPage < totalPages) {
@@ -225,7 +291,35 @@ export default function ImmersiveReaderClient() {
     scrollToTop();
   };
 
-  const topBarBg = theme === 'cream' ?'bg-[#F5EFE6]/95 border-b border-[#C4A882]' :'bg-[#0D0B0A]/95 border-b border-[#2E2420]';
+  const closeMediaModal = useCallback(() => setMediaModal(null), []);
+
+  const handleContentClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.target as HTMLElement | null;
+    const mediaBlock = target?.closest<HTMLElement>('[data-media-type][data-media-url]');
+
+    if (mediaBlock && contentRef.current?.contains(mediaBlock)) {
+      const type = mediaBlock.dataset.mediaType === 'video' ? 'video' : 'image';
+      const url = mediaBlock.dataset.mediaUrl ?? '';
+      if (!url) return;
+      setMediaModal({
+        type,
+        url,
+        alt: mediaBlock.textContent?.trim() ?? '',
+        openNonce: Date.now(),
+      });
+      return;
+    }
+
+    const image = target?.closest<HTMLImageElement>('img');
+    if (image && contentRef.current?.contains(image)) {
+      setLightboxSrc(image.currentSrc || image.src);
+    }
+  }, []);
+
+  const topBarBg =
+    theme === 'cream'
+      ? 'bg-[#F5EFE6]/95 border-b border-[#C4A882]'
+      : 'bg-[#0D0B0A]/95 border-b border-[#2E2420]';
 
   const topBarText = theme === 'cream' ? 'text-[#2C1F0E]' : 'text-[#F5EFE6]';
   const topBarMuted = theme === 'cream' ? 'text-[#8B6914]' : 'text-[#9A8A7A]';
@@ -248,7 +342,10 @@ export default function ImmersiveReaderClient() {
         <p className="text-[#9A8A7A] max-w-sm">
           Aún no se han publicado relatos. Vuelve pronto o comparte el primero.
         </p>
-        <Link href="/stories-library" className="px-6 py-3 bg-[#C9A96E] text-[#0D0B0A] rounded-xl font-semibold text-sm hover:bg-[#E8C97A] transition-all">
+        <Link
+          href="/stories-library"
+          className="px-6 py-3 bg-[#C9A96E] text-[#0D0B0A] rounded-xl font-semibold text-sm hover:bg-[#E8C97A] transition-all"
+        >
           Ver biblioteca
         </Link>
       </div>
@@ -282,6 +379,25 @@ export default function ImmersiveReaderClient() {
         .story-html-content em { font-style: italic; }
         .story-html-content hr { border: none; border-top: 1px solid rgba(201,169,110,0.3); margin: 2rem 0; }
         .story-html-content br { display: block; content: ""; margin-bottom: 0.5rem; }
+        .story-html-content figure { margin: 2rem 0; border-radius: 0.75rem; overflow: hidden; }
+        .story-html-content figure img { width: 100%; display: block; border-radius: 0.75rem; cursor: zoom-in; }
+        .story-html-content figcaption { font-size: 0.78rem; color: #9A8A7A; text-align: center; padding: 0.5rem 0.75rem; font-style: italic; }
+        .story-html-content .ch-reveal-block, .story-html-content .ch-media-block {
+          display: block;
+          width: fit-content;
+          margin: 1.75rem auto;
+          padding: 0.5rem 2rem;
+          border: 1px solid rgba(201,169,110,0.35);
+          border-radius: 999px;
+          color: #C9A96E;
+          font-size: 0.78rem;
+          letter-spacing: 0.1em;
+          text-align: center;
+          cursor: pointer;
+          user-select: none;
+          background: rgba(201,169,110,0.04);
+          font-family: var(--font-display, serif);
+        }
       `}</style>
 
       {/* ── FIXED TOP BAR ── */}
@@ -340,12 +456,18 @@ export default function ImmersiveReaderClient() {
                 title="Modo de lectura"
               >
                 {readingMode === 'paginated' ? <BookOpen size={15} /> : <AlignJustify size={15} />}
-                <span className="hidden md:inline">{readingMode === 'paginated' ? 'Paginado' : 'Scroll'}</span>
+                <span className="hidden md:inline">
+                  {readingMode === 'paginated' ? 'Paginado' : 'Scroll'}
+                </span>
               </button>
 
               {modePickerOpen && (
-                <div className={`absolute right-0 top-full mt-2 w-52 rounded-xl border shadow-2xl overflow-hidden z-50 ${tc.panelBg} ${tc.borderColor}`}>
-                  <div className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-widest border-b ${topBarMuted} ${tc.borderColor}`}>
+                <div
+                  className={`absolute right-0 top-full mt-2 w-52 rounded-xl border shadow-2xl overflow-hidden z-50 ${tc.panelBg} ${tc.borderColor}`}
+                >
+                  <div
+                    className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-widest border-b ${topBarMuted} ${tc.borderColor}`}
+                  >
                     Modo de lectura
                   </div>
                   {(['paginated', 'scroll'] as ReadingMode[]).map((mode) => (
@@ -360,12 +482,18 @@ export default function ImmersiveReaderClient() {
                     >
                       {mode === 'paginated' ? <BookOpen size={16} /> : <AlignJustify size={16} />}
                       <div className="text-left">
-                        <div className="font-medium">{mode === 'paginated' ? 'Paginado' : 'Scroll continuo'}</div>
+                        <div className="font-medium">
+                          {mode === 'paginated' ? 'Paginado' : 'Scroll continuo'}
+                        </div>
                         <div className={`text-xs mt-0.5 ${topBarMuted}`}>
-                          {mode === 'paginated' ? 'Recomendado para relatos largos' : 'Lectura fluida sin interrupciones'}
+                          {mode === 'paginated'
+                            ? 'Recomendado para relatos largos'
+                            : 'Lectura fluida sin interrupciones'}
                         </div>
                       </div>
-                      {readingMode === mode && <CheckCircle size={14} className="ml-auto text-[#C9A96E]" />}
+                      {readingMode === mode && (
+                        <CheckCircle size={14} className="ml-auto text-[#C9A96E]" />
+                      )}
                     </button>
                   ))}
                 </div>
@@ -375,7 +503,9 @@ export default function ImmersiveReaderClient() {
             <button
               onClick={handleBookmark}
               className={`p-2 rounded-lg transition-all ${
-                isBookmarked ? 'text-[#C9A96E] bg-[#C9A96E]/10' : `${topBarMuted} hover:text-[#C9A96E] hover:bg-[#C9A96E]/5`
+                isBookmarked
+                  ? 'text-[#C9A96E] bg-[#C9A96E]/10'
+                  : `${topBarMuted} hover:text-[#C9A96E] hover:bg-[#C9A96E]/5`
               }`}
               aria-label="Guardar relato"
             >
@@ -391,7 +521,9 @@ export default function ImmersiveReaderClient() {
             <button
               onClick={() => setSettingsOpen((v) => !v)}
               className={`p-2 rounded-lg transition-all ${
-                settingsOpen ? 'text-[#C9A96E] bg-[#C9A96E]/10' : `${topBarMuted} hover:text-[#C9A96E] hover:bg-[#C9A96E]/5`
+                settingsOpen
+                  ? 'text-[#C9A96E] bg-[#C9A96E]/10'
+                  : `${topBarMuted} hover:text-[#C9A96E] hover:bg-[#C9A96E]/5`
               }`}
               aria-label="Ajustes de lectura"
             >
@@ -409,7 +541,10 @@ export default function ImmersiveReaderClient() {
         >
           <div className="flex items-center justify-between mb-5">
             <h3 className={`text-sm font-semibold ${topBarText}`}>Ajustes de Lectura</h3>
-            <button onClick={() => setSettingsOpen(false)} className={`${topBarMuted} hover:text-[#C9A96E]`}>
+            <button
+              onClick={() => setSettingsOpen(false)}
+              className={`${topBarMuted} hover:text-[#C9A96E]`}
+            >
               <X size={16} />
             </button>
           </div>
@@ -426,7 +561,9 @@ export default function ImmersiveReaderClient() {
               >
                 <Minus size={13} />
               </button>
-              <span className={`text-sm tabular-nums w-12 text-center font-medium ${topBarText}`}>{fontSize}px</span>
+              <span className={`text-sm tabular-nums w-12 text-center font-medium ${topBarText}`}>
+                {fontSize}px
+              </span>
               <button
                 onClick={() => setFontSize((s) => Math.min(30, s + 2))}
                 className={`p-2 rounded-lg border transition-all ${tc.borderColor} ${topBarMuted} hover:text-[#C9A96E] hover:border-[#C9A96E]/40`}
@@ -440,19 +577,21 @@ export default function ImmersiveReaderClient() {
           <div className="mb-5">
             <p className={`text-xs mb-2.5 ${topBarMuted}`}>Tipografía</p>
             <div className="flex gap-2">
-              {(Object.entries(fontFamilies) as [FontFamily, typeof fontFamilies.serif][]).map(([key, config]) => (
-                <button
-                  key={key}
-                  onClick={() => setFontFamily(key)}
-                  className={`flex-1 py-2 px-3 rounded-lg border text-xs transition-all ${config.class} ${
-                    fontFamily === key
-                      ? 'border-[#C9A96E] bg-[#C9A96E]/10 text-[#C9A96E]'
-                      : `${tc.borderColor} ${topBarMuted} hover:border-[#C9A96E]/30`
-                  }`}
-                >
-                  {config.label}
-                </button>
-              ))}
+              {(Object.entries(fontFamilies) as [FontFamily, typeof fontFamilies.serif][]).map(
+                ([key, config]) => (
+                  <button
+                    key={key}
+                    onClick={() => setFontFamily(key)}
+                    className={`flex-1 py-2 px-3 rounded-lg border text-xs transition-all ${config.class} ${
+                      fontFamily === key
+                        ? 'border-[#C9A96E] bg-[#C9A96E]/10 text-[#C9A96E]'
+                        : `${tc.borderColor} ${topBarMuted} hover:border-[#C9A96E]/30`
+                    }`}
+                  >
+                    {config.label}
+                  </button>
+                )
+              )}
             </div>
           </div>
 
@@ -460,20 +599,22 @@ export default function ImmersiveReaderClient() {
           <div>
             <p className={`text-xs mb-2.5 ${topBarMuted}`}>Tema de lectura</p>
             <div className="flex gap-2">
-              {(Object.entries(themeConfig) as [ReaderTheme, typeof themeConfig.dark][]).map(([key, config]) => (
-                <button
-                  key={key}
-                  onClick={() => setTheme(key)}
-                  className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-1 rounded-lg border text-xs transition-all ${
-                    theme === key
-                      ? 'border-[#C9A96E] bg-[#C9A96E]/10 text-[#C9A96E]'
-                      : `${tc.borderColor} ${topBarMuted} hover:border-[#C9A96E]/30`
-                  }`}
-                >
-                  {config.icon}
-                  {config.label}
-                </button>
-              ))}
+              {(Object.entries(themeConfig) as [ReaderTheme, typeof themeConfig.dark][]).map(
+                ([key, config]) => (
+                  <button
+                    key={key}
+                    onClick={() => setTheme(key)}
+                    className={`flex-1 flex flex-col items-center gap-1 py-2.5 px-1 rounded-lg border text-xs transition-all ${
+                      theme === key
+                        ? 'border-[#C9A96E] bg-[#C9A96E]/10 text-[#C9A96E]'
+                        : `${tc.borderColor} ${topBarMuted} hover:border-[#C9A96E]/30`
+                    }`}
+                  >
+                    {config.icon}
+                    {config.label}
+                  </button>
+                )
+              )}
             </div>
           </div>
         </div>
@@ -483,7 +624,10 @@ export default function ImmersiveReaderClient() {
       {(settingsOpen || modePickerOpen) && (
         <div
           className="fixed inset-0 z-30"
-          onClick={() => { setSettingsOpen(false); setModePickerOpen(false); }}
+          onClick={() => {
+            setSettingsOpen(false);
+            setModePickerOpen(false);
+          }}
         />
       )}
 
@@ -491,7 +635,6 @@ export default function ImmersiveReaderClient() {
       <div ref={pageTopRef} className="pt-16">
         <div className="px-4 sm:px-6 pb-8">
           <article className="max-w-2xl mx-auto">
-
             {/* Cover Image — only on first page / scroll mode */}
             {(readingMode === 'scroll' || currentPage === 1) && (
               <div className="relative h-64 sm:h-80 rounded-2xl overflow-hidden mb-10 mt-8">
@@ -580,6 +723,7 @@ export default function ImmersiveReaderClient() {
                 <div
                   className={`story-html-content leading-[1.95] ${tc.text} ${ff.class}`}
                   style={{ fontSize: `${fontSize}px` }}
+                  onClick={handleContentClick}
                   dangerouslySetInnerHTML={{ __html: pages[currentPage - 1] ?? '' }}
                 />
 
@@ -660,7 +804,8 @@ export default function ImmersiveReaderClient() {
                     <div className="mt-16">
                       <div className="h-px bg-gradient-to-r from-transparent via-[#C9A96E]/30 to-transparent mb-10" />
                       <h2 className={`font-display text-xl font-bold text-center mb-6 ${tc.text}`}>
-                        Relatos que también te <span className="text-[#C9A96E] italic">van a atrapar</span>
+                        Relatos que también te{' '}
+                        <span className="text-[#C9A96E] italic">van a atrapar</span>
                       </h2>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         {related.slice(0, 4).map((s) => (
@@ -684,12 +829,16 @@ export default function ImmersiveReaderClient() {
                       {/* Dot indicators */}
                       <div className="flex items-center justify-center gap-1.5">
                         {Array.from({ length: Math.min(totalPages, 9) }).map((_, i) => {
-                          const pageNum = totalPages <= 9 ? i + 1 : Math.round((i / 8) * (totalPages - 1)) + 1;
-                          const isActive = totalPages <= 9 ? pageNum === currentPage : Math.abs(pageNum - currentPage) < 2;
+                          const pageNum =
+                            totalPages <= 9 ? i + 1 : Math.round((i / 8) * (totalPages - 1)) + 1;
+                          const isActive =
+                            totalPages <= 9
+                              ? pageNum === currentPage
+                              : Math.abs(pageNum - currentPage) < 2;
                           return (
                             <button
                               key={`dot-${i}`}
-                              onClick={() => totalPages <= 9 ? goToPage(pageNum) : undefined}
+                              onClick={() => (totalPages <= 9 ? goToPage(pageNum) : undefined)}
                               className={`rounded-full transition-all ${
                                 isActive
                                   ? 'w-6 h-1.5 bg-[#C9A96E]'
@@ -737,6 +886,7 @@ export default function ImmersiveReaderClient() {
                 <div
                   className={`story-html-content leading-[1.95] ${tc.text} ${ff.class}`}
                   style={{ fontSize: `${fontSize}px` }}
+                  onClick={handleContentClick}
                   dangerouslySetInnerHTML={{ __html: renderStoryHtml(fullText) }}
                 />
 
@@ -810,6 +960,75 @@ export default function ImmersiveReaderClient() {
           </article>
         </div>
       </div>
+      {lightboxSrc && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-4"
+          onClick={() => setLightboxSrc(null)}
+        >
+          <button
+            className="absolute top-4 right-4 p-2 text-white/70 hover:text-white transition-colors"
+            onClick={() => setLightboxSrc(null)}
+          >
+            <X size={24} />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxSrc}
+            alt=""
+            className="max-w-full max-h-full object-contain rounded-xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
+
+      {mediaModal && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-black/90 p-4"
+          onClick={closeMediaModal}
+        >
+          <button
+            className="absolute top-4 right-4 z-10 p-2 text-white/70 hover:text-white transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              closeMediaModal();
+            }}
+          >
+            <X size={24} />
+          </button>
+          {mediaModal.type === 'image' ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={mediaModal.openNonce}
+              src={mediaModal.url}
+              alt={mediaModal.alt}
+              className="max-w-full max-h-[90vh] object-contain rounded-xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : isDirectVideo(mediaModal.url) ? (
+            <video
+              key={mediaModal.openNonce}
+              src={mediaModal.url}
+              controls
+              autoPlay
+              className="max-w-full max-h-[90vh] rounded-xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <div
+              key={mediaModal.openNonce}
+              className="w-full max-w-3xl aspect-video rounded-xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <iframe
+                src={getVideoEmbed(mediaModal.url)}
+                className="w-full h-full"
+                allowFullScreen
+                allow="autoplay; encrypted-media"
+              />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

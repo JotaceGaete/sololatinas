@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { redirect } from 'next/navigation';
-import { getRelatoBySlug, getPublishedCapitulosByRelatoId, getCapituloByNumero } from '@/lib/supabase/queries';
+import { getRelatoBySlug, getPublishedCapitulosByRelatoId } from '@/lib/supabase/queries';
+import { buildInitialStoryChapter, shiftStoredChaptersAfterInitial } from '@/lib/stories/chapters';
 import ChapterReaderClient from './components/ChapterReaderClient';
 
 interface Props {
@@ -25,10 +26,12 @@ export default async function CapituloPage({ params }: Props) {
     notFound();
   }
 
-  const [capitulo, allCapitulos] = await Promise.all([
-    getCapituloByNumero(story.id, numero),
-    getPublishedCapitulosByRelatoId(story.id),
-  ]);
+  const publishedStoredCapitulos = await getPublishedCapitulosByRelatoId(story.id);
+  const initialChapter = buildInitialStoryChapter(story);
+  const allCapitulos = initialChapter
+    ? [initialChapter, ...shiftStoredChaptersAfterInitial(publishedStoredCapitulos)]
+    : publishedStoredCapitulos;
+  const capitulo = allCapitulos.find((item) => item.numero === numero) ?? null;
 
   console.log('[CapituloPage] capítulo encontrado:', capitulo?.id ?? 'NOT FOUND');
   console.log('[CapituloPage] total capítulos publicados:', allCapitulos.length);
@@ -38,11 +41,5 @@ export default async function CapituloPage({ params }: Props) {
     redirect(`/historia/${slug}`);
   }
 
-  return (
-    <ChapterReaderClient
-      story={story}
-      capitulo={capitulo}
-      allCapitulos={allCapitulos}
-    />
-  );
+  return <ChapterReaderClient story={story} capitulo={capitulo} allCapitulos={allCapitulos} />;
 }

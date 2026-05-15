@@ -4,6 +4,7 @@ import { ArrowLeft, BookOpen, CalendarDays, UserRound } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { mapCapituloToModel, mapRelatoToStory } from '@/lib/supabase/mappers';
 import type { SupabaseCapitulo, SupabaseProfile, SupabaseRelato } from '@/lib/supabase/mappers';
+import { buildInitialStoryChapter, shiftStoredChaptersAfterInitial } from '@/lib/stories/chapters';
 import { renderStoryHtml } from '@/lib/stories/render';
 
 interface Props {
@@ -29,6 +30,14 @@ function formatDate(value: string | null | undefined) {
   });
 }
 
+function renderAdminStoryHtml(content: string) {
+  return renderStoryHtml(content).replace(
+    /<div([^>]*data-media-url="([^"]+)"[^>]*)>([\s\S]*?)<\/div>/gi,
+    (_match, attrs: string, url: string, label: string) =>
+      `<a${attrs} href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>`
+  );
+}
+
 export default async function AdminRelatoDetailPage({ params }: Props) {
   const { id } = await params;
   const supabase = await createClient();
@@ -47,11 +56,7 @@ export default async function AdminRelatoDetailPage({ params }: Props) {
 
   if (!adminUser) redirect('/admin-panel');
 
-  const { data: relato } = await supabase
-    .from('relatos')
-    .select('*')
-    .eq('id', id)
-    .maybeSingle();
+  const { data: relato } = await supabase.from('relatos').select('*').eq('id', id).maybeSingle();
 
   if (!relato) redirect('/admin-panel');
 
@@ -73,7 +78,13 @@ export default async function AdminRelatoDetailPage({ params }: Props) {
   ]);
 
   const profile = profileResult.data as SupabaseProfile | null;
-  const chapters = ((chaptersResult.data ?? []) as SupabaseCapitulo[]).map(mapCapituloToModel);
+  const storedChapters = ((chaptersResult.data ?? []) as SupabaseCapitulo[]).map(
+    mapCapituloToModel
+  );
+  const initialChapter = buildInitialStoryChapter(story);
+  const chapters = initialChapter
+    ? [initialChapter, ...shiftStoredChaptersAfterInitial(storedChapters)]
+    : storedChapters;
   const status = statusLabels[story.status] ?? story.status;
 
   return (
@@ -117,15 +128,11 @@ export default async function AdminRelatoDetailPage({ params }: Props) {
             <div className="rounded-lg border border-border bg-background/40 p-3">
               <CalendarDays size={16} className="mb-2 text-primary" />
               <p className="text-xs uppercase tracking-wider text-muted-foreground/70">Fecha</p>
-              <p className="mt-1 font-medium text-foreground">
-                {formatDate(story.publishedAt)}
-              </p>
+              <p className="mt-1 font-medium text-foreground">{formatDate(story.publishedAt)}</p>
             </div>
             <div className="rounded-lg border border-border bg-background/40 p-3">
               <BookOpen size={16} className="mb-2 text-primary" />
-              <p className="text-xs uppercase tracking-wider text-muted-foreground/70">
-                Capitulos
-              </p>
+              <p className="text-xs uppercase tracking-wider text-muted-foreground/70">Capitulos</p>
               <p className="mt-1 font-medium text-foreground">{chapters.length}</p>
             </div>
           </div>
@@ -138,7 +145,7 @@ export default async function AdminRelatoDetailPage({ params }: Props) {
           {story.fullText ? (
             <div
               className="admin-story-content text-base leading-8 text-foreground"
-              dangerouslySetInnerHTML={{ __html: renderStoryHtml(story.fullText) }}
+              dangerouslySetInnerHTML={{ __html: renderAdminStoryHtml(story.fullText) }}
             />
           ) : (
             <p className="text-sm text-muted-foreground">
@@ -148,9 +155,7 @@ export default async function AdminRelatoDetailPage({ params }: Props) {
         </section>
 
         <section className="mt-6 rounded-xl border border-border bg-surface p-6">
-          <h2 className="mb-4 font-display text-xl font-semibold text-foreground">
-            Capitulos
-          </h2>
+          <h2 className="mb-4 font-display text-xl font-semibold text-foreground">Capitulos</h2>
           {chapters.length === 0 ? (
             <p className="text-sm text-muted-foreground">Este relato no tiene capitulos.</p>
           ) : (
@@ -176,7 +181,7 @@ export default async function AdminRelatoDetailPage({ params }: Props) {
                   {chapter.cuerpo ? (
                     <div
                       className="admin-story-content text-base leading-8 text-foreground"
-                      dangerouslySetInnerHTML={{ __html: renderStoryHtml(chapter.cuerpo) }}
+                      dangerouslySetInnerHTML={{ __html: renderAdminStoryHtml(chapter.cuerpo) }}
                     />
                   ) : (
                     <p className="text-sm text-muted-foreground">Capitulo sin contenido.</p>
@@ -201,6 +206,7 @@ export default async function AdminRelatoDetailPage({ params }: Props) {
         .admin-story-content ol { list-style: decimal; }
         .admin-story-content .ch-reveal-block,
         .admin-story-content .ch-media-block {
+          display: block;
           width: fit-content;
           margin: 1.25rem auto;
           padding: 0.5rem 1.5rem;
@@ -209,6 +215,7 @@ export default async function AdminRelatoDetailPage({ params }: Props) {
           color: #C9A96E;
           font-size: 0.8rem;
           letter-spacing: 0.08em;
+          text-decoration: none;
         }
       `}</style>
     </main>

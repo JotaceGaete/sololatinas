@@ -5,11 +5,20 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
-import RichTextEditor from './RichTextEditor';
+import ChapterRichEditor from '@/app/mis-relatos/[id]/capitulos/components/ChapterRichEditor';
 import PreviewModal from './PreviewModal';
 import {
-  PenLine, ImagePlus, Tags, Globe, BookOpen,
-  Sparkles, Eye, Save, Send, X, ChevronDown
+  PenLine,
+  ImagePlus,
+  Tags,
+  Globe,
+  BookOpen,
+  Sparkles,
+  Eye,
+  Save,
+  Send,
+  X,
+  ChevronDown,
 } from 'lucide-react';
 
 function slugify(value: string) {
@@ -24,25 +33,80 @@ function slugify(value: string) {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SUGGESTED_TAGS = [
-  'colombiana', 'mexicana', 'argentina', 'venezolana', 'chilena', 'brasileña',
-  'española', 'peruana', 'cubana', 'dominicana',
-  'pasión', 'romance', 'amor', 'deseo', 'intimidad', 'encuentro',
-  'noche', 'verano', 'lluvia', 'viaje', 'secreto', 'prohibido',
-  'cartas', 'baile', 'salsa', 'tango', 'flamenco', 'música',
-  'intenso', 'dulce', 'melancólico', 'apasionado', 'tierno', 'ardiente',
+  'colombiana',
+  'mexicana',
+  'argentina',
+  'venezolana',
+  'chilena',
+  'brasileña',
+  'española',
+  'peruana',
+  'cubana',
+  'dominicana',
+  'pasión',
+  'romance',
+  'amor',
+  'deseo',
+  'intimidad',
+  'encuentro',
+  'noche',
+  'verano',
+  'lluvia',
+  'viaje',
+  'secreto',
+  'prohibido',
+  'cartas',
+  'baile',
+  'salsa',
+  'tango',
+  'flamenco',
+  'música',
+  'intenso',
+  'dulce',
+  'melancólico',
+  'apasionado',
+  'tierno',
+  'ardiente',
 ];
 
 const COUNTRIES = [
-  'Colombia', 'México', 'Argentina', 'Venezuela', 'Chile', 'Brasil',
-  'España', 'Perú', 'Cuba', 'República Dominicana', 'Ecuador', 'Bolivia',
-  'Paraguay', 'Uruguay', 'Costa Rica', 'Panamá', 'Guatemala', 'Honduras',
-  'El Salvador', 'Nicaragua', 'Puerto Rico', 'Otro',
+  'Colombia',
+  'México',
+  'Argentina',
+  'Venezuela',
+  'Chile',
+  'Brasil',
+  'España',
+  'Perú',
+  'Cuba',
+  'República Dominicana',
+  'Ecuador',
+  'Bolivia',
+  'Paraguay',
+  'Uruguay',
+  'Costa Rica',
+  'Panamá',
+  'Guatemala',
+  'Honduras',
+  'El Salvador',
+  'Nicaragua',
+  'Puerto Rico',
+  'Otro',
 ];
 
 const CATEGORIES = [
-  'Romance', 'Romance Literario', 'Romance Erótico', 'Drama Romántico',
-  'Amor y Pérdida', 'Encuentros', 'Cartas de Amor', 'Poesía Narrativa',
-  'Fantasía Romántica', 'Suspenso Romántico', 'Comedia Romántica', 'Otro',
+  'Romance',
+  'Romance Literario',
+  'Romance Erótico',
+  'Drama Romántico',
+  'Amor y Pérdida',
+  'Encuentros',
+  'Cartas de Amor',
+  'Poesía Narrativa',
+  'Fantasía Romántica',
+  'Suspenso Romántico',
+  'Comedia Romántica',
+  'Otro',
 ];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -92,15 +156,21 @@ export default function EscribirRelatoClient() {
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
   const updateField = useCallback(<K extends keyof FormData>(key: K, value: FormData[K]) => {
-    setForm(prev => ({ ...prev, [key]: value }));
+    setForm((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const handleBodyChange = useCallback((html: string) => {
-    updateField('cuerpo', html);
-    const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-    const words = text ? text.split(' ').filter(w => w.length > 0).length : 0;
-    setWordCount(words);
-  }, [updateField]);
+  const handleBodyChange = useCallback(
+    (html: string) => {
+      updateField('cuerpo', html);
+      const text = html
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const words = text ? text.split(' ').filter((w) => w.length > 0).length : 0;
+      setWordCount(words);
+    },
+    [updateField]
+  );
 
   const handleImageChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -115,40 +185,55 @@ export default function EscribirRelatoClient() {
     reader.readAsDataURL(file);
   }, []);
 
-  const handleTagInput = useCallback((val: string) => {
-    setTagInput(val);
-    if (val.length > 0) {
-      const filtered = SUGGESTED_TAGS.filter(
-        t => t.toLowerCase().includes(val.toLowerCase()) && !form.tags.includes(t)
-      );
-      setTagSuggestions(filtered.slice(0, 8));
-      setShowTagDropdown(true);
-    } else {
+  const handleTagInput = useCallback(
+    (val: string) => {
+      setTagInput(val);
+      if (val.length > 0) {
+        const filtered = SUGGESTED_TAGS.filter(
+          (t) => t.toLowerCase().includes(val.toLowerCase()) && !form.tags.includes(t)
+        );
+        setTagSuggestions(filtered.slice(0, 8));
+        setShowTagDropdown(true);
+      } else {
+        setShowTagDropdown(false);
+      }
+    },
+    [form.tags]
+  );
+
+  const addTag = useCallback(
+    (tag: string) => {
+      const clean = tag.replace(/^#/, '').trim().toLowerCase();
+      if (!clean || form.tags.includes(clean) || form.tags.length >= 10) return;
+      updateField('tags', [...form.tags, clean]);
+      setTagInput('');
       setShowTagDropdown(false);
-    }
-  }, [form.tags]);
+    },
+    [form.tags, updateField]
+  );
 
-  const addTag = useCallback((tag: string) => {
-    const clean = tag.replace(/^#/, '').trim().toLowerCase();
-    if (!clean || form.tags.includes(clean) || form.tags.length >= 10) return;
-    updateField('tags', [...form.tags, clean]);
-    setTagInput('');
-    setShowTagDropdown(false);
-  }, [form.tags, updateField]);
+  const removeTag = useCallback(
+    (tag: string) => {
+      updateField(
+        'tags',
+        form.tags.filter((t) => t !== tag)
+      );
+    },
+    [form.tags, updateField]
+  );
 
-  const removeTag = useCallback((tag: string) => {
-    updateField('tags', form.tags.filter(t => t !== tag));
-  }, [form.tags, updateField]);
-
-  const handleTagKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
-      e.preventDefault();
-      addTag(tagInput.trim());
-    }
-    if (e.key === 'Backspace' && !tagInput && form.tags.length > 0) {
-      removeTag(form.tags[form.tags.length - 1]);
-    }
-  }, [tagInput, form.tags, addTag, removeTag]);
+  const handleTagKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if ((e.key === 'Enter' || e.key === ',') && tagInput.trim()) {
+        e.preventDefault();
+        addTag(tagInput.trim());
+      }
+      if (e.key === 'Backspace' && !tagInput && form.tags.length > 0) {
+        removeTag(form.tags[form.tags.length - 1]);
+      }
+    },
+    [tagInput, form.tags, addTag, removeTag]
+  );
 
   // ─── Submit helpers ──────────────────────────────────────────────────────────
 
@@ -174,7 +259,7 @@ export default function EscribirRelatoClient() {
 
   const calcReadingTime = (html: string): number => {
     const text = html.replace(/<[^>]*>/g, ' ').trim();
-    const words = text.split(/\s+/).filter(w => w.length > 0).length;
+    const words = text.split(/\s+/).filter((w) => w.length > 0).length;
     return Math.max(1, Math.ceil(words / 200));
   };
 
@@ -186,37 +271,49 @@ export default function EscribirRelatoClient() {
   };
 
   const handleSaveDraft = async () => {
-    if (!user) { toast.error('Debes iniciar sesión para guardar'); router.push('/sign-up-login-screen'); return; }
+    if (!user) {
+      toast.error('Debes iniciar sesión para guardar');
+      router.push('/sign-up-login-screen');
+      return;
+    }
     const err = validate();
-    if (err) { toast.error(err); return; }
+    if (err) {
+      toast.error(err);
+      return;
+    }
     setSaving(true);
     try {
       const imagenUrl = await uploadCoverImage();
       const slug = slugify(form.titulo);
-      const { error } = await getSupabase().from('relatos').insert({
-        title: form.titulo.trim(),
-        titulo: form.titulo.trim(),
-        slug,
-        content: form.cuerpo,
-        cuerpo: form.cuerpo,
-        excerpt: form.extracto.trim(),
-        resumen: form.extracto.trim(),
-        extracto: form.extracto.trim(),
-        tags: form.tags,
-        pais: form.pais,
-        categoria: form.categoria,
-        autor_id: user.id,
-        status: 'draft',
-        estado: 'borrador',
-        published: false,
-        cover_image_url: imagenUrl,
-        portada_url: imagenUrl,
-        imagen_url: imagenUrl,
-        generar_imagen_ia: form.generarImagenIA,
-        lectura_minutos: calcReadingTime(form.cuerpo),
-        tiempo_lectura: calcReadingTime(form.cuerpo),
-      });
-      if (error) { toast.error('Error al guardar: ' + error.message); return; }
+      const { error } = await getSupabase()
+        .from('relatos')
+        .insert({
+          title: form.titulo.trim(),
+          titulo: form.titulo.trim(),
+          slug,
+          content: form.cuerpo,
+          cuerpo: form.cuerpo,
+          excerpt: form.extracto.trim(),
+          resumen: form.extracto.trim(),
+          extracto: form.extracto.trim(),
+          tags: form.tags,
+          pais: form.pais,
+          categoria: form.categoria,
+          autor_id: user.id,
+          status: 'draft',
+          estado: 'borrador',
+          published: false,
+          cover_image_url: imagenUrl,
+          portada_url: imagenUrl,
+          imagen_url: imagenUrl,
+          generar_imagen_ia: form.generarImagenIA,
+          lectura_minutos: calcReadingTime(form.cuerpo),
+          tiempo_lectura: calcReadingTime(form.cuerpo),
+        });
+      if (error) {
+        toast.error('Error al guardar: ' + error.message);
+        return;
+      }
       toast.success('Borrador guardado correctamente');
     } catch (e: any) {
       toast.error('Error inesperado: ' + e.message);
@@ -226,38 +323,53 @@ export default function EscribirRelatoClient() {
   };
 
   const handlePublish = async () => {
-    if (!user) { toast.error('Debes iniciar sesión para publicar'); router.push('/sign-up-login-screen'); return; }
+    if (!user) {
+      toast.error('Debes iniciar sesión para publicar');
+      router.push('/sign-up-login-screen');
+      return;
+    }
     const err = validate();
-    if (err) { toast.error(err); return; }
-    if (!form.extracto.trim()) { toast.error('El extracto es obligatorio para publicar'); return; }
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    if (!form.extracto.trim()) {
+      toast.error('El extracto es obligatorio para publicar');
+      return;
+    }
     setPublishing(true);
     try {
       const imagenUrl = await uploadCoverImage();
       const slug = slugify(form.titulo);
-      const { error } = await getSupabase().from('relatos').insert({
-        title: form.titulo.trim(),
-        titulo: form.titulo.trim(),
-        slug,
-        content: form.cuerpo,
-        cuerpo: form.cuerpo,
-        excerpt: form.extracto.trim(),
-        resumen: form.extracto.trim(),
-        extracto: form.extracto.trim(),
-        tags: form.tags,
-        pais: form.pais,
-        categoria: form.categoria,
-        autor_id: user.id,
-        status: 'revision',
-        estado: 'revision',
-        published: false,
-        cover_image_url: imagenUrl,
-        portada_url: imagenUrl,
-        imagen_url: imagenUrl,
-        generar_imagen_ia: form.generarImagenIA,
-        lectura_minutos: calcReadingTime(form.cuerpo),
-        tiempo_lectura: calcReadingTime(form.cuerpo),
-      });
-      if (error) { toast.error('Error al publicar: ' + error.message); return; }
+      const { error } = await getSupabase()
+        .from('relatos')
+        .insert({
+          title: form.titulo.trim(),
+          titulo: form.titulo.trim(),
+          slug,
+          content: form.cuerpo,
+          cuerpo: form.cuerpo,
+          excerpt: form.extracto.trim(),
+          resumen: form.extracto.trim(),
+          extracto: form.extracto.trim(),
+          tags: form.tags,
+          pais: form.pais,
+          categoria: form.categoria,
+          autor_id: user.id,
+          status: 'revision',
+          estado: 'revision',
+          published: false,
+          cover_image_url: imagenUrl,
+          portada_url: imagenUrl,
+          imagen_url: imagenUrl,
+          generar_imagen_ia: form.generarImagenIA,
+          lectura_minutos: calcReadingTime(form.cuerpo),
+          tiempo_lectura: calcReadingTime(form.cuerpo),
+        });
+      if (error) {
+        toast.error('Error al publicar: ' + error.message);
+        return;
+      }
       toast.success('¡Relato enviado a moderación! Te notificaremos cuando sea aprobado.');
       setTimeout(() => router.push('/stories-library'), 2000);
     } catch (e: any) {
@@ -283,7 +395,8 @@ export default function EscribirRelatoClient() {
           Escribe tu Relato
         </h1>
         <p className="text-muted-foreground text-sm max-w-md mx-auto">
-          Comparte tu historia con nuestra comunidad de lectores latinos. Cada relato es una ventana al alma.
+          Comparte tu historia con nuestra comunidad de lectores latinos. Cada relato es una ventana
+          al alma.
         </p>
       </div>
 
@@ -296,7 +409,7 @@ export default function EscribirRelatoClient() {
           <input
             type="text"
             value={form.titulo}
-            onChange={e => updateField('titulo', e.target.value)}
+            onChange={(e) => updateField('titulo', e.target.value)}
             placeholder="Un título que despierte la curiosidad..."
             maxLength={120}
             className="w-full bg-surface border border-border rounded-xl px-5 py-4 font-display text-2xl md:text-3xl text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:border-primary/60 transition-colors"
@@ -318,9 +431,10 @@ export default function EscribirRelatoClient() {
               <span>~{readingTime} min lectura</span>
             </div>
           </div>
-          <RichTextEditor
+          <ChapterRichEditor
             value={form.cuerpo}
             onChange={handleBodyChange}
+            userId={user?.id ?? 'anonymous'}
             placeholder="Comienza tu historia aquí. Escribe con libertad, sin límites..."
           />
         </section>
@@ -328,11 +442,14 @@ export default function EscribirRelatoClient() {
         {/* ── Extracto ── */}
         <section className="space-y-2">
           <label className="block text-sm font-medium text-muted-foreground uppercase tracking-wider">
-            Extracto <span className="text-muted-foreground/50 normal-case font-normal">(vista previa gratuita)</span>
+            Extracto{' '}
+            <span className="text-muted-foreground/50 normal-case font-normal">
+              (vista previa gratuita)
+            </span>
           </label>
           <textarea
             value={form.extracto}
-            onChange={e => updateField('extracto', e.target.value)}
+            onChange={(e) => updateField('extracto', e.target.value)}
             placeholder="Un fragmento irresistible que invite a leer el relato completo..."
             rows={4}
             maxLength={400}
@@ -351,13 +468,21 @@ export default function EscribirRelatoClient() {
             <span className="text-muted-foreground/50 normal-case font-normal">(máx. 10)</span>
           </label>
           <div className="relative">
-            <div className="min-h-[52px] flex flex-wrap gap-2 items-center bg-surface border border-border rounded-xl px-4 py-3 focus-within:border-primary/60 transition-colors cursor-text"
+            <div
+              className="min-h-[52px] flex flex-wrap gap-2 items-center bg-surface border border-border rounded-xl px-4 py-3 focus-within:border-primary/60 transition-colors cursor-text"
               onClick={() => document.getElementById('tag-input')?.focus()}
             >
-              {form.tags.map(tag => (
-                <span key={tag} className="inline-flex items-center gap-1 bg-primary/15 text-primary text-sm px-3 py-1 rounded-full border border-primary/30">
+              {form.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1 bg-primary/15 text-primary text-sm px-3 py-1 rounded-full border border-primary/30"
+                >
                   #{tag}
-                  <button type="button" onClick={() => removeTag(tag)} className="hover:text-red-400 transition-colors ml-0.5">
+                  <button
+                    type="button"
+                    onClick={() => removeTag(tag)}
+                    className="hover:text-red-400 transition-colors ml-0.5"
+                  >
                     <X size={12} />
                   </button>
                 </span>
@@ -367,7 +492,7 @@ export default function EscribirRelatoClient() {
                   id="tag-input"
                   type="text"
                   value={tagInput}
-                  onChange={e => handleTagInput(e.target.value)}
+                  onChange={(e) => handleTagInput(e.target.value)}
                   onKeyDown={handleTagKeyDown}
                   onBlur={() => setTimeout(() => setShowTagDropdown(false), 150)}
                   placeholder={form.tags.length === 0 ? '#colombiana, #romance, #noche...' : ''}
@@ -382,7 +507,7 @@ export default function EscribirRelatoClient() {
                 <div className="p-2">
                   <p className="text-xs text-muted-foreground/50 px-2 py-1 mb-1">Sugerencias</p>
                   <div className="flex flex-wrap gap-1.5 p-1">
-                    {tagSuggestions.map(tag => (
+                    {tagSuggestions.map((tag) => (
                       <button
                         key={tag}
                         type="button"
@@ -401,16 +526,19 @@ export default function EscribirRelatoClient() {
           {/* Popular tags quick-add */}
           <div className="flex flex-wrap gap-1.5 pt-1">
             <span className="text-xs text-muted-foreground/40 self-center mr-1">Populares:</span>
-            {['colombiana', 'pasión', 'noche', 'romance', 'encuentro', 'amor'].filter(t => !form.tags.includes(t)).slice(0, 6).map(tag => (
-              <button
-                key={tag}
-                type="button"
-                onClick={() => addTag(tag)}
-                className="text-xs text-muted-foreground/50 hover:text-primary border border-border/50 hover:border-primary/30 px-2.5 py-1 rounded-full transition-all hover:bg-primary/5"
-              >
-                +#{tag}
-              </button>
-            ))}
+            {['colombiana', 'pasión', 'noche', 'romance', 'encuentro', 'amor']
+              .filter((t) => !form.tags.includes(t))
+              .slice(0, 6)
+              .map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={() => addTag(tag)}
+                  className="text-xs text-muted-foreground/50 hover:text-primary border border-border/50 hover:border-primary/30 px-2.5 py-1 rounded-full transition-all hover:bg-primary/5"
+                >
+                  +#{tag}
+                </button>
+              ))}
           </div>
         </section>
 
@@ -428,7 +556,11 @@ export default function EscribirRelatoClient() {
           >
             {coverPreview ? (
               <div className="relative h-56 md:h-72">
-                <img src={coverPreview} alt="Vista previa de portada" className="w-full h-full object-cover" />
+                <img
+                  src={coverPreview}
+                  alt="Vista previa de portada"
+                  className="w-full h-full object-cover"
+                />
                 <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                   <div className="text-white text-center">
                     <ImagePlus size={24} className="mx-auto mb-2" />
@@ -437,7 +569,11 @@ export default function EscribirRelatoClient() {
                 </div>
                 <button
                   type="button"
-                  onClick={(e) => { e.stopPropagation(); setCoverImage(null); setCoverPreview(''); }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCoverImage(null);
+                    setCoverPreview('');
+                  }}
                   className="absolute top-3 right-3 bg-black/60 hover:bg-black/80 text-white rounded-full p-1.5 transition-colors"
                 >
                   <X size={14} />
@@ -448,7 +584,9 @@ export default function EscribirRelatoClient() {
                 <ImagePlus size={32} />
                 <div className="text-center">
                   <p className="text-sm font-medium">Haz clic para subir una imagen</p>
-                  <p className="text-xs mt-1">JPG, PNG, WebP · Máx. 5MB · Recomendado: 1200×800px</p>
+                  <p className="text-xs mt-1">
+                    JPG, PNG, WebP · Máx. 5MB · Recomendado: 1200×800px
+                  </p>
                 </div>
               </div>
             )}
@@ -472,13 +610,20 @@ export default function EscribirRelatoClient() {
             <div className="relative">
               <select
                 value={form.pais}
-                onChange={e => updateField('pais', e.target.value)}
+                onChange={(e) => updateField('pais', e.target.value)}
                 className="w-full appearance-none bg-surface border border-border rounded-xl px-5 py-3.5 text-foreground focus:outline-none focus:border-primary/60 transition-colors cursor-pointer pr-10"
               >
                 <option value="">Seleccionar país...</option>
-                {COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+                {COUNTRIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </select>
-              <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <ChevronDown
+                size={16}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+              />
             </div>
           </section>
 
@@ -490,13 +635,20 @@ export default function EscribirRelatoClient() {
             <div className="relative">
               <select
                 value={form.categoria}
-                onChange={e => updateField('categoria', e.target.value)}
+                onChange={(e) => updateField('categoria', e.target.value)}
                 className="w-full appearance-none bg-surface border border-border rounded-xl px-5 py-3.5 text-foreground focus:outline-none focus:border-primary/60 transition-colors cursor-pointer pr-10"
               >
                 <option value="">Seleccionar categoría...</option>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </select>
-              <ChevronDown size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <ChevronDown
+                size={16}
+                className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
+              />
             </div>
           </section>
         </div>
@@ -508,15 +660,25 @@ export default function EscribirRelatoClient() {
               <input
                 type="checkbox"
                 checked={form.generarImagenIA}
-                onChange={e => updateField('generarImagenIA', e.target.checked)}
+                onChange={(e) => updateField('generarImagenIA', e.target.checked)}
                 className="sr-only"
               />
-              <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                form.generarImagenIA ? 'bg-primary border-primary' : 'border-border group-hover:border-primary/50'
-              }`}>
+              <div
+                className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
+                  form.generarImagenIA
+                    ? 'bg-primary border-primary'
+                    : 'border-border group-hover:border-primary/50'
+                }`}
+              >
                 {form.generarImagenIA && (
                   <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-                    <path d="M1 4L3.5 6.5L9 1" stroke="black" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path
+                      d="M1 4L3.5 6.5L9 1"
+                      stroke="black"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
                   </svg>
                 )}
               </div>
@@ -524,11 +686,15 @@ export default function EscribirRelatoClient() {
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-1">
                 <Sparkles size={16} className="text-primary" />
-                <span className="font-medium text-foreground">Generar imagen con IA según los tags del relato</span>
-                <span className="text-xs bg-primary/15 text-primary border border-primary/30 px-2 py-0.5 rounded-full">Próximamente</span>
+                <span className="font-medium text-foreground">
+                  Generar imagen con IA según los tags del relato
+                </span>
+                <span className="text-xs bg-primary/15 text-primary border border-primary/30 px-2 py-0.5 rounded-full">
+                  Próximamente
+                </span>
               </div>
               <p className="text-sm text-muted-foreground">
-                Nuestra IA creará una ilustración artística basada en las etiquetas de tu relato. 
+                Nuestra IA creará una ilustración artística basada en las etiquetas de tu relato.
                 Ejemplo: una escena romántica latina con iluminación cálida y estilo elegante.
               </p>
             </div>
@@ -583,8 +749,10 @@ export default function EscribirRelatoClient() {
           <div className="text-center py-4 px-6 rounded-xl bg-surface border border-border/50">
             <p className="text-sm text-muted-foreground">
               Necesitas{' '}
-              <a href="/sign-up-login-screen" className="text-primary hover:underline">iniciar sesión</a>
-              {' '}para guardar o publicar tu relato.
+              <a href="/sign-up-login-screen" className="text-primary hover:underline">
+                iniciar sesión
+              </a>{' '}
+              para guardar o publicar tu relato.
             </p>
           </div>
         )}
