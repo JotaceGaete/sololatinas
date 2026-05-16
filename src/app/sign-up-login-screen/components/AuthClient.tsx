@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import AppImage from '@/components/ui/AppImage';
 import AppLogo from '@/components/ui/AppLogo';
 import { useForm } from 'react-hook-form';
-import { Eye, EyeOff, BookOpen, Copy, Check, AlertCircle, Loader2, Mail } from 'lucide-react';
+import { Eye, EyeOff, BookOpen, AlertCircle, Loader2, Mail } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -31,12 +31,6 @@ interface RegisterForm {
 // Age gate state
 type AgeGateState = 'pending' | 'confirmed' | 'denied';
 
-const demoCredentials = [
-{ role: 'Lectora', email: 'valentina@sololatinas.com', password: 'Jazmín2026!' },
-{ role: 'Autora', email: 'isabella@sololatinas.com', password: 'Mezcal2026!' },
-{ role: 'Admin', email: 'admin@sololatinas.com', password: 'Admin2026#' }];
-
-
 export default function AuthClient() {
   const router = useRouter();
   const { signIn, signUp } = useAuth();
@@ -45,28 +39,10 @@ export default function AuthClient() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
   const [emailConfirmPending, setEmailConfirmPending] = useState(false);
 
   const loginForm = useForm<LoginForm>({ defaultValues: { email: '', password: '', remember: false } });
   const registerForm = useForm<RegisterForm>();
-
-  const handleCopy = async (text: string, fieldId: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedField(fieldId);
-      setTimeout(() => setCopiedField(null), 2000);
-    } catch {
-      toast.error('No se pudo copiar al portapapeles');
-    }
-  };
-
-  const fillCredentials = (cred: typeof demoCredentials[0]) => {
-    loginForm.setValue('email', cred.email);
-    loginForm.setValue('password', cred.password);
-    setTab('login');
-    toast.success(`Credenciales de ${cred.role} cargadas`);
-  };
 
   const onLoginSubmit = async (data: LoginForm) => {
     setIsLoading(true);
@@ -580,47 +556,6 @@ export default function AuthClient() {
               </button>
             </form>
           }
-
-          {/* Demo Credentials Box */}
-          <div className="mt-8 p-4 bg-surface border border-primary/20 rounded-xl">
-            <p className="text-xs font-semibold text-primary uppercase tracking-widest mb-3">
-              Cuentas Demo
-            </p>
-            <div className="space-y-2">
-              {demoCredentials.map((cred) =>
-              <div
-                key={`demo-cred-${cred.role}`}
-                className="flex items-center justify-between gap-2 p-2 rounded-lg bg-surface-elevated border border-border hover:border-primary/30 transition-all">
-                
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold text-primary">{cred.role}</p>
-                    <p className="text-xs text-muted-foreground truncate">{cred.email}</p>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0">
-                    <button
-                    type="button"
-                    onClick={() => handleCopy(cred.email, `email-${cred.role}`)}
-                    className="p-1.5 text-muted-foreground hover:text-primary transition-colors"
-                    aria-label={`Copiar email de ${cred.role}`}>
-                    
-                      {copiedField === `email-${cred.role}` ?
-                    <Check size={12} className="text-primary" /> :
-
-                    <Copy size={12} />
-                    }
-                    </button>
-                    <button
-                    type="button"
-                    onClick={() => fillCredentials(cred)}
-                    className="px-2 py-1 text-xs bg-primary/15 text-primary rounded hover:bg-primary/25 transition-all font-medium">
-                    
-                      Usar
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
 
           <p className="text-center text-xs text-muted-foreground mt-4">
             {tab === 'login' ?
